@@ -7,6 +7,10 @@ export interface UIHandlers {
   clearFocus(): void;
   toggleTrailer(): void;
   toggleDemo(): void;
+  setView?(view: 'overview' | 'courtside' | 'crowd'): void;
+  playHighlight?(): void;
+  onShare?(ref: SpotRef): Promise<void>;
+  previewTakeover?(): void;
 }
 
 const esc = (s: string) =>
@@ -46,8 +50,13 @@ export function createUI(handlers: UIHandlers) {
   const demoBtn = byId<HTMLButtonElement>('btn-demo');
   const namingTier = byId('tier-naming-price');
   const screenTier = byId('tier-screen-price');
+  const leadersBtn = byId<HTMLButtonElement>('btn-leaders');
+  const highlightBtn = byId<HTMLButtonElement>('btn-highlight');
+  const exitTrailerBtn = byId<HTMLButtonElement>('btn-exit-trailer');
 
   let state: ArenaState;
+  let selected: SpotRef | null = null;
+  let sharing = false;
   const seatSales = new Map<string, SeatSale>();
   let toastTimer = 0;
 
@@ -61,14 +70,15 @@ export function createUI(handlers: UIHandlers) {
     const naming = brandOf(state.naming.brandId);
     title.textContent = `The ${naming ? naming.name : '______'} Court`;
     namingLine.textContent = naming
-      ? `Court name: ${usd(state.naming.valueCents)} · take it for ${usd(takeoverPrice(state.naming.valueCents))}`
-      : `Naming rights available · ${usd(state.naming.valueCents)}`;
+      ? `Make it yours for ${usd(takeoverPrice(state.naming.valueCents))} ↗`
+      : `Your name here · ${usd(state.naming.valueCents)} ↗`;
     namingTier.textContent = naming ? usd(takeoverPrice(state.naming.valueCents)) : usd(state.naming.valueCents);
     screenTier.textContent = `${usd(state.screen.dayPriceCents)}/day`;
-    chipSales.textContent = state.demo ? 'Demo data' : state.totalSalesCents === null ? 'Opening soon' : `Sales ${usd(state.totalSalesCents)}`;
-    chipSeats.textContent = `Seats ${state.seats.length.toLocaleString('en-US')}/${SEAT_COUNT.toLocaleString('en-US')}`;
+    chipSales.textContent = state.demo ? 'FICTIONAL DEMO' : state.totalSalesCents === null ? 'PREVIEW · OPENING SOON' : `Sales ${usd(state.totalSalesCents)}`;
+    chipSeats.textContent = `${state.seats.length.toLocaleString('en-US')} / ${SEAT_COUNT.toLocaleString('en-US')} seats`;
     demoNote.hidden = !state.demo;
     demoBtn.textContent = state.demo ? 'Demo: on' : 'Demo: off';
+    demoBtn.setAttribute('aria-pressed', String(state.demo));
     if (!leaders.hidden) renderLeaders();
   }
 
@@ -86,7 +96,7 @@ export function createUI(handlers: UIHandlers) {
   }
 
   const stats = (h: Holding, label: string) =>
-    `<dl class="stats"><div><dt>Last sold for</dt><dd>${usd(h.valueCents)}</dd></div><div><dt>${label}</dt><dd>${h.takeovers}×</dd></div></dl>`;
+    `<dl class="stats"><div><dt>${state.demo ? 'Demo spot value' : 'Last sold for'}</dt><dd>${usd(h.valueCents)}</dd></div><div><dt>${state.demo ? `Demo: ${label.toLowerCase()}` : label}</dt><dd>${h.takeovers}×</dd></div></dl>`;
 
   function takeoverBlock(h: Holding, noun: string, verbOpen: string) {
     const brand = brandOf(h.brandId);
@@ -138,7 +148,7 @@ export function createUI(handlers: UIHandlers) {
         <h2 id="panel-title">${brand ? 'On the big screen today' : 'Open today'}</h2>
         ${brand ? brandBlock(brand) : ''}
         <p>The screen on the building over the court plays your ad between score updates. Rented by the day.</p>
-        <p class="muted">Launching on Product Hunt? Book it for launch day.</p>
+        <p class="muted">Launching something new? Put your launch day up in lights.</p>
         <button class="cta" data-checkout>Pick a day · ${usd(state.screen.dayPriceCents)}/day</button>`;
     }
     const brand = brandOf(state.naming.brandId);
@@ -153,18 +163,26 @@ export function createUI(handlers: UIHandlers) {
           ? `${stats(h, 'Renamed')}<button class="cta" data-checkout>Rename the court · ${usd(takeoverPrice(h.valueCents))}</button>`
           : `<button class="cta" data-checkout>Name the court · ${usd(h.valueCents)}</button>`
       }
-      <p class="muted">Anyone can take the name by paying 1.25× the last price.</p>`;
+      <p class="muted">Anyone can take the name by paying 1.25× the last price.</p>
+      ${handlers.previewTakeover ? '<button class="share-button" data-takeover-preview type="button">Preview a court takeover <span aria-hidden="true">↗</span></button><p class="preview-footnote">A temporary fictional demo. No purchase or ownership change.</p>' : ''}`;
   }
 
   function showSpot(ref: SpotRef) {
+    selected = ref;
     leaders.hidden = true;
-    panelBody.innerHTML = spotHtml(ref);
+    leadersBtn.setAttribute('aria-expanded', 'false');
+    panelBody.innerHTML = `${spotHtml(ref)}
+      ${handlers.onShare ? '<button class="share-button" data-share type="button">Download spot card <span aria-hidden="true">↓</span></button>' : ''}
+      <p class="preview-footnote">${state.demo ? 'Fictional demo brands. ' : ''}Preview prices. Checkout is not live.</p>`;
     panel.hidden = false;
+    panel.scrollTop = 0;
   }
 
   function hidePanels() {
     panel.hidden = true;
     leaders.hidden = true;
+    selected = null;
+    leadersBtn.setAttribute('aria-expanded', 'false');
   }
 
   function renderLeaders() {
@@ -260,6 +278,30 @@ export function createUI(handlers: UIHandlers) {
 
   document.addEventListener('click', (e) => {
     const el = e.target as HTMLElement;
+    const share = el.closest<HTMLButtonElement>('[data-share]');
+    if (share && selected && handlers.onShare && !sharing) {
+      sharing = true;
+      share.disabled = true;
+      share.textContent = 'Making your spot card…';
+      void handlers.onShare(selected).then(
+        () => showToast('Spot card ready. Share a little streetball.'),
+        () => showToast('The spot card could not be saved. Please try again.'),
+      ).finally(() => {
+        sharing = false;
+        share.disabled = false;
+        share.innerHTML = 'Download spot card <span aria-hidden="true">↓</span>';
+      });
+      return;
+    }
+    if (el.closest('[data-takeover-preview]')) {
+      handlers.previewTakeover?.();
+      return;
+    }
+    const view = el.closest<HTMLElement>('[data-view]')?.dataset.view;
+    if (view === 'overview' || view === 'courtside' || view === 'crowd') {
+      handlers.setView?.(view);
+      return;
+    }
     if (el.closest('[data-checkout]')) {
       showToast("Checkout isn't live yet. This is a preview of the court.");
       return;
@@ -286,14 +328,17 @@ export function createUI(handlers: UIHandlers) {
     }
   });
   namingLine.addEventListener('click', () => handlers.focus({ kind: 'naming' }));
-  byId('btn-leaders').addEventListener('click', () => {
+  leadersBtn.addEventListener('click', () => {
     if (leaders.hidden) {
       panel.hidden = true;
       renderLeaders();
       leaders.hidden = false;
     } else leaders.hidden = true;
+    leadersBtn.setAttribute('aria-expanded', String(!leaders.hidden));
   });
   byId('btn-trailer').addEventListener('click', () => handlers.toggleTrailer());
+  exitTrailerBtn.addEventListener('click', () => handlers.toggleTrailer());
+  highlightBtn.addEventListener('click', () => handlers.playHighlight?.());
   demoBtn.addEventListener('click', () => handlers.toggleDemo());
   for (const btn of document.querySelectorAll<HTMLButtonElement>('.panel-close')) {
     btn.addEventListener('click', () => {
@@ -306,10 +351,27 @@ export function createUI(handlers: UIHandlers) {
     render,
     showSpot,
     hidePanels,
+    showToast,
+    setView(view: 'overview' | 'courtside' | 'crowd') {
+      for (const button of document.querySelectorAll<HTMLButtonElement>('[data-view]')) {
+        button.setAttribute('aria-pressed', String(button.dataset.view === view));
+      }
+    },
+    setHighlightPlaying(active: boolean) {
+      highlightBtn.classList.toggle('is-playing', active);
+      highlightBtn.innerHTML = active ? '<span aria-hidden="true">↗</span> Highlight playing' : '<span aria-hidden="true">↗</span> Play a highlight';
+      highlightBtn.setAttribute('aria-pressed', String(active));
+    },
+    setTrailerMode(active: boolean) {
+      exitTrailerBtn.hidden = !active;
+      byId('btn-trailer').setAttribute('aria-pressed', String(active));
+    },
     showTooltip(ref: SpotRef, x: number, y: number) {
       tooltip.textContent = describe(ref);
-      tooltip.style.transform = `translate(${Math.round(x + 14)}px, ${Math.round(y + 14)}px)`;
       tooltip.hidden = false;
+      const left = Math.max(12, Math.min(x + 14, innerWidth - tooltip.offsetWidth - 12));
+      const top = Math.max(12, Math.min(y + 14, innerHeight - tooltip.offsetHeight - 12));
+      tooltip.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
     },
     hideTooltip() {
       tooltip.hidden = true;

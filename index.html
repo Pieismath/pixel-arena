@@ -3,76 +3,94 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>The Court</title>
-    <meta name="description" content="A cartoon street basketball court where brands buy bleacher seats, fence banners, wall murals, the big screen, and the court's name." />
+    <meta name="theme-color" content="#252a24" />
+    <title>The Court — Make your mark</title>
+    <meta name="description" content="A living streetball court. Find your seat, put your name on the fence, or take over the whole court. Interactive preview with fictional demo brands." />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Inter:wght@400;500;600;800&family=Permanent+Marker&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Inter:wght@400;500;600;700;800;900&family=Permanent+Marker&display=swap" rel="stylesheet" />
   </head>
   <body>
-    <canvas id="scene" aria-label="3D street basketball court. Drag to look around; click a seat, banner, mural, the big screen or center court."></canvas>
+    <canvas id="scene" tabindex="0" aria-label="Interactive 3D street basketball court. Drag to orbit, pinch or scroll to zoom. Use the view and spot buttons to explore."></canvas>
 
     <div id="loading" class="loading" role="status">
       <div class="loading-ball"></div>
-      <span id="loading-text">LOADING THE COURT…</span>
+      <div class="loading-wordmark">THE COURT</div>
+      <span id="loading-text">Opening the gates…</span>
+      <p>Streetball. A little louder.</p>
     </div>
 
     <div id="ui">
       <header class="hud-top">
         <div class="title-block">
-          <div class="wordmark">STREET COURT</div>
+          <div class="wordmark"><span class="court-mark" aria-hidden="true">+</span> STREET COURT <span class="preview-label">INTERACTIVE PREVIEW</span></div>
           <h1 id="court-title">The ______ Court</h1>
-          <button id="naming-line" class="naming-line" type="button">Naming rights available</button>
+          <button id="naming-line" class="naming-line" type="button">Naming rights available ↗</button>
         </div>
         <div class="hud-right">
-          <div class="chips">
+          <div class="chips" aria-label="Court status">
             <span id="chip-sales" class="chip"></span>
             <span id="chip-seats" class="chip"></span>
           </div>
           <div class="toolbar">
-            <button id="btn-leaders" class="pbtn" type="button">Leaderboard</button>
-            <button id="btn-trailer" class="pbtn" type="button" title="Hide the interface and fly the camera, for recording a teaser (T)">Trailer</button>
-            <button id="btn-demo" class="pbtn" type="button" title="Switch between demo brands and the empty launch-day court">Demo: on</button>
+            <button id="btn-leaders" class="pbtn pbtn-quiet" type="button" aria-controls="leaders" aria-expanded="false">Spot holders</button>
+            <button id="btn-demo" class="pbtn pbtn-quiet" type="button" aria-pressed="true" title="Switch between fictional demo brands and the empty preview court">Demo: on</button>
+            <button id="btn-trailer" class="pbtn trailer-button" type="button" title="Play a cinematic camera sequence (T)"><span aria-hidden="true">▷</span> Trailer</button>
           </div>
         </div>
       </header>
 
+      <div class="explore-bar">
+        <nav class="views" aria-label="Camera views">
+          <button class="view-button" data-view="overview" type="button" aria-pressed="true">Overview</button>
+          <button class="view-button" data-view="courtside" type="button" aria-pressed="false">Courtside</button>
+          <button class="view-button" data-view="crowd" type="button" aria-pressed="false">Crowd</button>
+        </nav>
+        <button id="btn-highlight" class="highlight-button" type="button" title="Play a dunk highlight"><span aria-hidden="true">↗</span> Play a highlight</button>
+      </div>
+
       <aside id="panel" class="panel" role="dialog" aria-labelledby="panel-title" hidden>
-        <button class="panel-close" type="button" aria-label="Close">×</button>
+        <button class="panel-close" type="button" aria-label="Close spot details">×</button>
         <div id="panel-body"></div>
       </aside>
 
-      <aside id="leaders" class="panel leaders" aria-label="Leaderboard" hidden>
-        <button class="panel-close" type="button" aria-label="Close">×</button>
-        <h2>Leaderboard</h2>
+      <aside id="leaders" class="panel leaders" aria-label="Spot holders" hidden>
+        <button class="panel-close" type="button" aria-label="Close spot holders">×</button>
+        <div class="badge">Around the court</div>
+        <h2>Spot holders</h2>
+        <p class="muted">The names making this place their own.</p>
         <div id="leaders-body"></div>
       </aside>
 
-      <nav class="tiers" aria-label="What you can buy">
-        <button class="tier" data-kind="seat" type="button">
-          <span class="tier-name">Seat</span><span class="tier-price">$5</span><span class="tier-desc">A fan in your colors</span>
-        </button>
-        <button class="tier" data-kind="banner" type="button">
-          <span class="tier-name">Banner</span><span class="tier-price">from $25</span><span class="tier-desc">Take any banner for 1.25×</span>
-        </button>
-        <button class="tier" data-kind="mural" type="button">
-          <span class="tier-name">Mural</span><span class="tier-price">from $50</span><span class="tier-desc">Your brand on the wall</span>
-        </button>
-        <button class="tier" data-kind="screen" type="button">
-          <span class="tier-name">Big screen</span><span id="tier-screen-price" class="tier-price">$29/day</span><span class="tier-desc">Own it on launch day</span>
-        </button>
-        <button class="tier tier-hot" data-kind="naming" type="button">
-          <span class="tier-name">Court name</span><span id="tier-naming-price" class="tier-price">$100</span><span class="tier-desc">Rename the court</span>
-        </button>
-      </nav>
+      <div class="spot-dock">
+        <div class="dock-caption"><span>MAKE YOUR MARK</span><span class="interaction-hint">Drag to explore · Scroll to get closer</span></div>
+        <nav class="tiers" aria-label="Explore brand spots and preview prices">
+          <button class="tier" data-kind="seat" type="button">
+            <span class="tier-index">01</span><span class="tier-name">A seat</span><span class="tier-price">$5</span><span class="tier-desc">Your fan. Your colors.</span><span class="tier-arrow" aria-hidden="true">↗</span>
+          </button>
+          <button class="tier" data-kind="banner" type="button">
+            <span class="tier-index">02</span><span class="tier-name">A banner</span><span class="tier-price"><small>from</small> $25</span><span class="tier-desc">Front row visibility.</span><span class="tier-arrow" aria-hidden="true">↗</span>
+          </button>
+          <button class="tier" data-kind="mural" type="button">
+            <span class="tier-index">03</span><span class="tier-name">A mural</span><span class="tier-price"><small>from</small> $50</span><span class="tier-desc">Leave it on the wall.</span><span class="tier-arrow" aria-hidden="true">↗</span>
+          </button>
+          <button class="tier" data-kind="screen" type="button">
+            <span class="tier-index">04</span><span class="tier-name">The screen</span><span id="tier-screen-price" class="tier-price">$29/day</span><span class="tier-desc">Make today yours.</span><span class="tier-arrow" aria-hidden="true">↗</span>
+          </button>
+          <button class="tier tier-hot" data-kind="naming" type="button">
+            <span class="tier-index">05</span><span class="tier-name">The whole court</span><span id="tier-naming-price" class="tier-price">$100</span><span class="tier-desc">Put your name on it.</span><span class="tier-arrow" aria-hidden="true">↗</span>
+          </button>
+        </nav>
+      </div>
 
-      <div id="demo-note" class="demo-note" hidden>Demo data · every brand shown is made up</div>
+      <div id="demo-note" class="demo-note" hidden>Fictional brands · Demo scene</div>
       <div id="tooltip" class="tooltip" hidden></div>
       <div id="toast" class="toast" role="status" hidden></div>
     </div>
 
-    <div id="trailer-hint" class="trailer-hint" hidden>Trailer mode · press T or Esc to exit</div>
+    <button id="btn-exit-trailer" class="exit-trailer" type="button" hidden><span aria-hidden="true">×</span> Exit trailer</button>
+    <div id="trailer-hint" class="trailer-hint" hidden>Cinematic mode · T or Esc to exit</div>
 
     <script type="module" src="/src/main.ts"></script>
   </body>
