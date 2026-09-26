@@ -1,0 +1,140 @@
+{
+  "_units": "feet. Axes as in the web app: x east, y up, z south. Read by src/world/layout.ts and blender/build_park.py.",
+  "court": {
+    "length": 94,
+    "width": 50
+  },
+  "floor": {
+    "length": 110,
+    "width": 64
+  },
+  "rim": {
+    "x": 41.75,
+    "y": 10,
+    "radius": 0.75
+  },
+  "bleachers": [
+    {
+      "name": "NORTH",
+      "side": -1,
+      "rows": 12,
+      "seats": 44
+    },
+    {
+      "name": "SOUTH",
+      "side": 1,
+      "rows": 8,
+      "seats": 44
+    }
+  ],
+  "bleacherShape": {
+    "front": 37.5,
+    "rowDepth": 2.4,
+    "rowRise": 1.35,
+    "firstHeight": 1.6,
+    "seatSpacing": 2.0
+  },
+  "barrier": {
+    "z": 34.5,
+    "height": 3.2,
+    "length": 92
+  },
+  "sidelineBanners": {
+    "perSide": 8,
+    "length": 10.6,
+    "height": 2.4,
+    "y": 1.7
+  },
+  "endBanners": {
+    "perEnd": 4,
+    "x": 62,
+    "length": 11,
+    "height": 4,
+    "y": 5.5,
+    "gap": 1
+  },
+  "fence": {
+    "x": 62,
+    "north": -68,
+    "south": 60,
+    "height": 12
+  },
+  "hoop": {
+    "poleX": 50.5,
+    "boardX": 43
+  },
+  "murals": [
+    {
+      "x": -74,
+      "z": -26,
+      "width": 22,
+      "height": 13,
+      "y": 4,
+      "facing": "+x"
+    },
+    {
+      "x": -74,
+      "z": 0,
+      "width": 22,
+      "height": 13,
+      "y": 4,
+      "facing": "+x"
+    },
+    {
+      "x": -74,
+      "z": 26,
+      "width": 22,
+      "height": 13,
+      "y": 4,
+      "facing": "+x"
+    },
+    {
+      "x": 78,
+      "z": -16,
+      "width": 24,
+      "height": 14,
+      "y": 6,
+      "facing": "-x"
+    },
+    {
+      "x": 78,
+      "z": 16,
+      "width": 24,
+      "height": 14,
+      "y": 6,
+      "facing": "-x"
+    }
+  ],
+  "screen": {
+    "x": 0,
+    "y": 40,
+    "z": -80,
+    "width": 38,
+    "height": 21.4
+  },
+  "namingSign": {
+    "x": 0,
+    "y": 57,
+    "z": -80,
+    "width": 64,
+    "height": 8
+  },
+  "lights": [
+    [
+      -58,
+      -44
+    ],
+    [
+      58,
+      -44
+    ],
+    [
+      -58,
+      44
+    ],
+    [
+      58,
+      44
+    ]
+  ]
+}
