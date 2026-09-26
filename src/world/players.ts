@@ -879,6 +879,7 @@ export class GameSim implements Scoreboard {
       }
       mesh.material = body;
       if (mesh.morphTargetDictionary && mesh.morphTargetInfluences) {
+        mesh.morphTargetInfluences.fill(0);
         const face = ['FaceBroad', 'FaceLean', 'FaceStrong'][seed % 3];
         const index = mesh.morphTargetDictionary[face];
         if (index !== undefined) mesh.morphTargetInfluences[index] = .55 + (seed % 4) * .1;

@@ -24,8 +24,10 @@ The regression validates authored animation coverage, numerical position continu
 
 ## Verified shipped asset
 
-GLB SHA256: `f8b8218bcd9074f9a3c8d0d96d9a498773590dd47c69563e43527c9378ad0d70`.
+GLB SHA256: `0591752f0522bb29f7ea8c63e54d5caaa443aa2127e72d27763501be9a54f2a2`.
 
 The final run passed **47,310 simulated frames**, **148 pass catches at the exact animated palm**, **61 scoring sequences**, all 15 animation clips and every game phase. At 60 Hz over 480 seconds, maximum ball displacement was **0.76764 feet/frame** (46.06 feet/second), versus the reproduced original 20.823 feet/frame. At 30 Hz over another 240 seconds it was **1.49711 feet/frame**. Mixed 120/60/30/20 Hz scenarios peaked at 60.50 feet/second, with no loss, duplication, nonfinite position, court penetration or disabled depth testing. Parent-transform and manual-control scenarios also passed.
 
 Measured support-foot drift during the planted half of a steady gait was **0.01120 feet for Run**, **0.01113 feet for RunDribble**, and **0.000494 feet for Shuffle**. The runtime scales cadence to authored ground travel and each athlete's dimensions. This measurement covers a steady gait, not every acceleration, turn or transition.
+
+The final suite also injects nonzero imported defaults for every facial morph and verifies that each athlete and outline retains exactly one selected face variant. Runtime clears inherited morph weights before applying that variant.

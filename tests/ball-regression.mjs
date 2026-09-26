@@ -49,7 +49,21 @@ for (const [name, speed, axis] of [['Run', 9.36084, 'z'], ['RunDribble', 9.36084
   footPlant[name] = { calibratedFeetPerSecond: speed, stanceDriftFeet: drift };
 }
 
+// Imported default weights must not stack multiple face shapes on a selected athlete.
+const importedMorphDefaults = [];
+gltf.scene.traverse(object => {
+  if (object.morphTargetInfluences?.length) {
+    importedMorphDefaults.push([object, [...object.morphTargetInfluences]]);
+    object.morphTargetInfluences.fill(.6);
+  }
+});
 const sim = new GameSim(gltf);
+for (const [object, values] of importedMorphDefaults) object.morphTargetInfluences.splice(0, values.length, ...values);
+sim.group.traverse(object => {
+  if (object.morphTargetDictionary?.FaceStrong !== undefined) {
+    assert.equal(object.morphTargetInfluences.filter(weight => weight !== 0).length, 1, 'Inherited GLB face morphs were stacked on the intended variant');
+  }
+});
 let previous = new THREE.Vector3(...sim.qaSnapshot().position);
 let segmentMaxStep = 0;
 let frames = 0, maxStep = 0, maxSpeed = 0, minY = Infinity, catches = 0, scored = 0;
