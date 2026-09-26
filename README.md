@@ -40,7 +40,7 @@ Drag the court to orbit, use the wheel or pinch to zoom, and click or tap a sell
 | Exit trailer / `T` / `Esc` | Leave the cinematic view. Outside trailer mode, `Esc` closes panels. |
 | `W` | Start a crowd wave. |
 | Demo button | Switch between fictional occupied spots and the empty preview court. |
-| Download spot card | Export a PNG for the selected spot with a dedicated camera, brand details and preview disclosure. |
+| Download spot card | Open a PNG preview for the selected spot, then choose Save PNG or long-press on mobile. Uses a dedicated camera, brand details and preview disclosure. |
 | Preview a court takeover | In the court-name panel, temporarily rename the court to a fictional brand and celebrate. The original state returns after eight seconds. |
 
 Spot cards use the current viewport orientation: landscape cards are 1600×1000 and portrait cards are 1080×1350. They capture the 3D scene without the interface or selection highlight; screen cards show the ad rather than whichever score frame happens to be playing. Exports happen locally. Trailer mode is intended for screen recording; the app does not encode or publish video clips.
@@ -59,6 +59,7 @@ Options can be combined, for example `http://localhost:5190/?demo=1&view=courtsi
 | `highlight=1` | Start a highlight on load. |
 | `trailer=1` | Start in cinematic mode. |
 | `inspect=1` | Show approximate FPS, draw calls and triangle counts. Useful for local diagnostics, not a device benchmark. |
+| `preview=1` | Open a labeled static preview with a link back to lighter interactive graphics. |
 | `still=<seconds>` | Development server only: stop simulation time at a positive number of seconds for repeatable screenshots. Ignored in production builds. |
 
 A development screenshot example is `http://localhost:5190/?demo=1&highlight=1&trailer=1&still=2.3`. Camera settling, asynchronous artwork/font loading and viewport dimensions still affect the final image.

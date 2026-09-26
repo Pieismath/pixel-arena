@@ -69,6 +69,7 @@ export function createUI(handlers: UIHandlers) {
 
     const naming = brandOf(state.naming.brandId);
     title.textContent = `The ${naming ? naming.name : '______'} Court`;
+    document.title = `${naming ? `The ${naming.name} Court` : 'Street Court'} · ${state.demo ? 'Fictional demo' : 'Preview'}`;
     namingLine.textContent = naming
       ? `Make it yours for ${usd(takeoverPrice(state.naming.valueCents))} ↗`
       : `Your name here · ${usd(state.naming.valueCents)} ↗`;

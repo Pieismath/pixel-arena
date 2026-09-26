@@ -322,9 +322,17 @@ def hoops():
         cyl("Metal", (px, 6.5, 0), 0.34, 7.2, segs=12)
         beam("Metal", (px, 13.2, 0), (s * (hp["boardX"] + 0.4), 12.6, 0), 0.45)
         beam("Metal", (px, 9.8, 0), (s * (hp["boardX"] + 0.6), 12.4, 0), 0.25)
-        box("Backboard", (s * hp["boardX"], 11.6, 0), (0.3, 3.6, 6.2))
-        box("Rim", (s * (hp["boardX"] - 0.2), 11.0, 0), (0.1, 1.6, 2.0))  # shooter's square
-        box("Backboard", (s * (hp["boardX"] - 0.23), 11.05, 0), (0.08, 1.3, 1.6))
+        box("Backboard", (s * hp["boardX"], 11.6, 0), (0.12, 3.6, 6.2))
+        # Transparent glass with real perimeter/square geometry, so a close dunk never
+        # disappears behind an opaque slab or a filled painted target.
+        for y in (9.8, 13.4):
+            box("Aluminum", (s * hp["boardX"], y, 0), (0.22, 0.12, 6.4))
+        for z in (-3.1, 3.1):
+            box("Aluminum", (s * hp["boardX"], 11.6, z), (0.22, 3.6, 0.12))
+        for y in (10.25, 11.85):
+            box("Rim", (s * (hp["boardX"] - 0.12), y, 0), (0.04, 0.10, 2.0))
+        for z in (-1, 1):
+            box("Rim", (s * (hp["boardX"] - 0.12), 11.05, z), (0.04, 1.6, 0.10))
         # Rim: a torus made of short beams.
         cx = s * rim["x"]
         n = 20

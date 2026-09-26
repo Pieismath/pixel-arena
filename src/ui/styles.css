@@ -232,3 +232,7 @@ body.trailer .cinematic-disclosure { display: block; }
   .share-preview-footer p span { font-size: 9px; }
   .share-preview-save { gap: 14px; padding: 12px; }
 }
+@media (max-width: 700px) {
+  .trailer-hint { bottom: 46px; }
+  .cinematic-disclosure { font-size: 8px; left: 16px; }
+}

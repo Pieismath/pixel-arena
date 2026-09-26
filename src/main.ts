@@ -60,6 +60,7 @@ async function main() {
   const params = new URLSearchParams(location.search);
   const stillAt = import.meta.env.DEV ? Number(params.get('still') ?? 0) : 0;
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (params.get('preview') === '1') { showFallback('Explore a still preview, or open the interactive court with lighter graphics.'); return; }
   const canvas = document.getElementById('scene') as HTMLCanvasElement;
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: quality === 'low', powerPreference: 'high-performance' });
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -90,7 +91,7 @@ async function main() {
   const homeView = () =>
     isPortrait()
       ? { camera: new THREE.Vector3(66, 70, 84), target: new THREE.Vector3(0, 2, -4) }
-      : { camera: new THREE.Vector3(62, 43, 70), target: new THREE.Vector3(0, 4, -7) };
+      : { camera: new THREE.Vector3(46, 42, 68), target: new THREE.Vector3(-5, 4, -7) };
   function fitCamera() {
     camera.fov = isPortrait() ? 60 : 45;
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -330,6 +331,8 @@ async function main() {
     applyState();
     ui.render(state);
     focus({kind: 'naming'});
+    ui.hidePanels();
+    moments.group.position.set(0, 33, -62);
     if (!reducedMotion) moments.start(brand.color, brand.accent);
     crowd.cheer();
     ui.showToast('Demo takeover preview · the original court returns in 8 seconds.');
@@ -580,10 +583,13 @@ function showFallback(message: string) {
   const retry = document.createElement('a');
   const url = new URL(location.href);
   url.searchParams.set('quality', 'low');
+  url.searchParams.delete('preview');
   retry.href = url.href;
   retry.textContent = 'Open with lighter graphics →';
   retry.style.color = '#f4c967';
-  fallback.append(image, text, retry);
+  const disclosure = document.createElement('small');
+  disclosure.textContent = 'FICTIONAL DEMO · Static preview';
+  fallback.append(image, disclosure, text, retry);
   document.body.append(fallback);
 }
 
