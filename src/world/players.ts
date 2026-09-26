@@ -11,9 +11,9 @@ type TeamId = 0 | 1;
 type Phase = 'fetch' | 'inbound' | 'advance' | 'set' | 'pass' | 'shot' | 'drive' | 'dunk' | 'loose';
 type Clip = 'Idle' | 'Run' | 'RunDribble' | 'IdleDribble' | 'Defend' | 'Shoot' | 'Pass' | 'Celebrate' | 'Dunk';
 
-const SKINS = ['#f1c7a3', '#e0ac85', '#c68863', '#9c6644', '#6f4a33', '#b07a55'];
-const HAIR_COLORS = ['#1b1412', '#2e1f16', '#4a2f1d', '#b08a4a', '#1b1412'];
-const LOOKS: string[][] = [['HairBuzz'], ['HairAfro'], ['HairTwists', 'Headband'], ['HairBuzz', 'HairBeard'], ['HairAfro', 'Headband'], ['HairTwists']];
+const SKINS = ['#dfac8d', '#cf986f', '#b77c55', '#925c3e', '#65432f', '#a86d4b'];
+const HAIR_COLORS = ['#1b1412', '#2e1f16', '#4a2f1d', '#80603b', '#1b1412'];
+const LOOKS: string[][] = [['HairBuzz'], ['HairAfro'], ['HairTwists', 'Headband'], ['HairBuzz', 'HairBeard'], ['HairTwists'], ['HairAfro', 'Headband'], ['HairBuzz', 'Headband'], ['HairTwists', 'HairBeard']];
 // Region order matches PLAYER_MATS in blender/build_characters.py.
 const REGIONS = ['Skin', 'Jersey', 'Trim', 'Shorts', 'Socks', 'Shoe', 'Sole', 'EyeWhite', 'Dark', 'Hair'] as const;
 const FPS = 24;
@@ -47,7 +47,8 @@ function playerMaterial(colors: THREE.Color[]) {
         vRegion = float(ri);
         vClothPosition = position;
         vRegionColor = uPalette[0];
-        for (int i = 1; i < ${REGIONS.length}; i++) { if (i == ri) vRegionColor = uPalette[i]; }`,
+        for (int i = 1; i < ${REGIONS.length}; i++) { if (i == ri) vRegionColor = uPalette[i]; }
+        vRegionColor *= region.g > 0.1 ? region.g : 1.0;`,
       );
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vRegionColor;\nvarying vec3 vClothPosition;\nvarying float vRegion;')
@@ -617,7 +618,7 @@ export class GameSim implements Scoreboard {
       this.handWorld(h, this.tmp3);
       if (this.phase === 'fetch' || this.phase === 'inbound' || h.current === 'Celebrate') this.ballPos.copy(this.tmp3);
       else {
-        // Dribble: in the hand at the top of each bounce, on the floor halfway through.
+        // Dribble clips start with the hand down; the ball meets it halfway through each cycle.
         const running = h.current === 'RunDribble';
         const period = running ? 8 / FPS : 12 / FPS;
         const time = h.actions[h.current].time;

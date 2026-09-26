@@ -123,6 +123,16 @@ SEGMENTS = [(b, J[h], J[t]) for b, h, t, _p in BONES]
 
 HEAD_CENTER = Vector((0, 0.0, 5.57))
 HEAD_RADII = (0.76, 0.7, 0.83)
+HEAD_SCALE = Vector((.87, .90, .85))
+HEAD_ANCHOR_Z = J["head_base"].z
+
+
+def scale_head_geometry(verts):
+    # Scale around the rig pivot, keeping the neck join planted and all hair compatible.
+    for v in verts:
+        v.co.x *= HEAD_SCALE.x
+        v.co.y *= HEAD_SCALE.y
+        v.co.z = HEAD_ANCHOR_Z + (v.co.z-HEAD_ANCHOR_Z)*HEAD_SCALE.z
 
 
 def at_head(dx, dy, dz):
@@ -359,9 +369,10 @@ def fan_region(bone, c):
 
 def add_cranium(bm, mat, low_poly=False):
     """An authored ring silhouette: broad temples, cheek planes, square tapered jaw."""
-    count = 12 if low_poly else 24
-    levels = [(-0.79, .34, .39), (-.67, .53, .53), (-.39, .68, .65),
-              (-.08, .76, .70), (.24, .75, .68), (.53, .64, .59), (.73, .40, .40)]
+    count = 12 if low_poly else 32
+    levels = [(-.79, .38, .40), (-.65, .57, .54), (-.40, .67, .62),
+              (-.23, .71, .64), (-.05, .76, .69), (.12, .75, .67),
+              (.27, .74, .69), (.51, .66, .61), (.73, .41, .41)]
     rings = []
     for z, rx, ry in levels:
         ring = []
@@ -370,6 +381,19 @@ def add_cranium(bm, mat, low_poly=False):
             # A mildly squared cross section keeps the face from reading as a balloon.
             x = math.copysign(abs(math.cos(a)) ** .87, math.cos(a)) * rx
             y = math.copysign(abs(math.sin(a)) ** .91, math.sin(a)) * ry
+            if y < -.25:
+                # The nose bridge, brow shelf and cheek planes belong to the face surface.
+                # This gives real relief and shadows without stuck-on spheres or stickers.
+                middle = max(0, 1-abs(x)/.23)
+                if -.23 <= z <= .27:
+                    nose = {.27:.025, .12:.12, -.05:.205, -.23:.065}.get(z, 0)
+                    y -= nose * middle
+                if z == .27:
+                    y -= .055 * max(0, 1-abs(abs(x)-.29)/.24)
+                if z == -.05:
+                    y -= .042 * max(0, 1-abs(abs(x)-.45)/.22)
+                if z == -.40:
+                    y += .05 * max(0, 1-abs(abs(x)-.40)/.25)
             ring.append(bm.verts.new(HEAD_CENTER + Vector((x, y, z))))
         rings.append(ring)
     for lower, upper in zip(rings, rings[1:]):
@@ -395,21 +419,12 @@ def add_head(bm, mats, low_poly=False):
         add_ellipsoid(bm, at_head(sx * .27, -.667, .13), (.166, .052, .076), mats["EyeWhite"], small)
         add_ellipsoid(bm, at_head(sx * .265, -.725, .132), (.059, .024, .060), mats["Dark"], small)
         brow_rot = Quaternion((0, 1, 0), math.radians(-12 * sx))
-        add_box(bm, at_head(sx * .275, -.672, .292), (.355, .13, .11), mats["Hair"], rot=brow_rot, bevel=.0 if low_poly else .025)
-        if not low_poly:
-            # Cheek ridge with a soft planar transition, not a separate round cheek.
-            add_ellipsoid(bm, at_head(sx * .42, -.601, -.13), (.20, .035, .08), mats["Skin"], (10, 6))
-    # Wedge nose: a readable bridge and broad base with a deliberate highlight plane.
-    points = [(-.105, -.65, .27), (.105, -.65, .27), (-.16, -.66, -.16),
-              (.16, -.66, -.16), (-.11, -.865, -.12), (.11, -.865, -.12), (0, -.80, .19)]
-    nv = [bm.verts.new(HEAD_CENTER + Vector(v)) for v in points]
-    for ids in [(0, 6, 4, 2), (6, 1, 3, 5), (4, 6, 5), (2, 4, 5, 3)]:
-        f = bm.faces.new([nv[i] for i in ids]); f.material_index = mats["Skin"]; f.smooth = False
+        add_box(bm, at_head(sx * .275, -.698, .292), (.34, .105, .095), mats["Hair"], rot=brow_rot, bevel=.0 if low_poly else .025)
     # A small asymmetric grin is more athletic than the original toy-like smile.
     add_box(bm, at_head(0, -.641, -.405), (.38, .047, .10), mats["Dark"], bevel=0 if low_poly else .025)
     if not low_poly:
         add_box(bm, at_head(.015, -.668, -.385), (.285, .016, .037), mats["EyeWhite"], bevel=.008)
-        add_ellipsoid(bm, at_head(0, -.54, -.58), (.29, .04, .08), mats["Skin"], (12, 6))
+
 
 
 def head_shell(bm, scale, keep, mat, segs=(28, 18)):
@@ -429,15 +444,27 @@ def add_twists(bm, mat, low=False):
     head_shell(bm, 1.025, lambda d: d.z > .4 or (d.y > -.22 and d.z > .05), mat, (12,8) if low else (24,14))
     for ix, x in enumerate((-.43, 0, .43)):
         for iy, y in enumerate((-.34, .05, .40)):
-            z = .66 + (.12 if ix == 1 else .02) - (.07 if iy == 2 else 0)
-            add_ellipsoid(bm, at_head(x,y,z), (.17,.23,.24), mat, (8,5) if low else (12,8),
+            z = .57 + (.08 if ix == 1 else .02) - (.05 if iy == 2 else 0)
+            add_ellipsoid(bm, at_head(x,y,z), (.16,.20,.18), mat, (8,5) if low else (12,8),
                           rot=Quaternion((0,1,0), math.radians(-16 if ix == 0 else 16)))
+
+
+def add_cropped_curls(bm, mat, low=False):
+    # A tight irregular crop, wider at the temples and flatter at the crown than a sphere.
+    verts = add_ellipsoid(bm, at_head(0,.055,.45), (.80,.73,.405), mat, (12,8) if low else (28,16))
+    for v in verts:
+        d = v.co - Vector(at_head(0,.055,.45))
+        angle = math.atan2(d.y, d.x)
+        curl = .018 * math.sin(angle * 9 + d.z*20) + .012 * math.cos(angle*15-d.z*13)
+        v.co += d.normalized() * curl
+        if v.co.z > HEAD_CENTER.z + .76:
+            v.co.z = HEAD_CENTER.z + .76 + (v.co.z-HEAD_CENTER.z-.76)*.35
 
 
 HAIR_STYLES = {
     "Twists": add_twists,
     "Buzz": lambda bm, m, low=False: head_shell(bm, 1.035, lambda d: d.z > 0.52 or (d.y > -0.25 and d.z > 0.0), m, (12, 8) if low else (28, 18)),
-    "Afro": lambda bm, m, low=False: add_ellipsoid(bm, at_head(0, 0.14, 0.5), (1.02, 0.98, 0.8), m, (10, 7) if low else (24, 14)),
+    "Afro": add_cropped_curls,
     "Beard": lambda bm, m, low=False: head_shell(bm, 1.045, lambda d: d.z < -0.12 and d.y < 0.35 and not (abs(d.x) < 0.22 and -0.46 < d.z < -0.24 and d.y < -0.5), m, (12, 8) if low else (28, 18)),
 }
 
@@ -549,12 +576,16 @@ def assemble(name, body_mesh, region_of, materials, low_poly=False, hair=None):
     bm.from_mesh(body_mesh)
     if not low_poly:
         add_kit_detail(bm, mats)
+    body_verts = set(bm.verts)
     add_head(bm, mats, low_poly)
+    scale_head_geometry([v for v in bm.verts if v not in body_verts])
     add_shoes(bm, mats, low_poly)
     if not low_poly:
         add_thumbs(bm, mats)
     if hair:
+        before_hair = set(bm.verts)
         hair(bm, mats["Hair"])
+        scale_head_geometry([v for v in bm.verts if v not in before_hair])
     me = bpy.data.meshes.new(name)
     bm.to_mesh(me)
     bm.free()
@@ -826,7 +857,15 @@ def regionize(obj, codes, slots=16):
     for poly in me.polygons:
         code = (codes[poly.material_index] + 0.5) / slots
         for li in poly.loop_indices:
-            attr.data[li].color = (code, 0.0, 0.0, 1.0)
+            shade = 1.0
+            co = me.vertices[me.loops[li].vertex_index].co
+            if codes[poly.material_index] == 0 and co.z > 4.75 and co.y < -.20:
+                x = co.x / HEAD_SCALE.x
+                z = (co.z-HEAD_ANCHOR_Z)/HEAD_SCALE.z+HEAD_ANCHOR_Z-HEAD_CENTER.z
+                if z < -.55: shade = .83
+                elif -.42 < z < -.12 and .25 < abs(x) < .58: shade = .89
+                elif .02 < z < .24 and .12 < abs(x) < .5: shade = .90
+            attr.data[li].color = (code, shade, 0.0, 1.0)
     me.color_attributes.active_color = attr
     me.materials.clear()
     shared = bpy.data.materials.get("Player") or material("Player", (1, 1, 1))
@@ -861,6 +900,7 @@ def build_baller():
     for style in ("Buzz", "Afro", "Beard", "Twists"):
         bm = bmesh.new()
         HAIR_STYLES[style](bm, 0)
+        scale_head_geometry(list(bm.verts))
         hm = bpy.data.meshes.new(f"Hair{style}")
         bm.to_mesh(hm)
         bm.free()
@@ -869,6 +909,7 @@ def build_baller():
         regionize(hair_obj, [PLAYER_MATS.index("Hair")])
     bm = bmesh.new()
     head_shell(bm, 1.06, lambda d: 0.5 < d.z + 0.08 * d.y < 0.64, 0)  # above the brows, dipping at the back
+    scale_head_geometry(list(bm.verts))
     hm = bpy.data.meshes.new("Headband")
     bm.to_mesh(hm)
     bm.free()
