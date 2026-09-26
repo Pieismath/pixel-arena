@@ -311,7 +311,7 @@ export function basketballTexture() {
 // --- The graffiti wall ------------------------------------------------------------------------
 
 const TAGS = ['NEXT UP', 'HOOPS', 'ONE MORE', 'BALL IS LIFE', 'KING OF THE COURT', 'RUN IT BACK', 'GAME TIME', 'BUCKETS', 'SKY HIGH', 'CITY', 'NO CALLS', 'AND ONE'];
-const SPRAY = ['#ff3ea5', '#37e0ff', '#ffd23f', '#8ee000', '#ff7a1a', '#b983ff', '#ff5c5c', '#ffffff'];
+const SPRAY = ['#de7866', '#4f9c9a', '#d9b66b', '#5c697f', '#f1d2a5', '#9b769c', '#33485b', '#eae0c8'];
 
 /**
  * The handball wall: stained paint covered in tags. `murals` are the wall-space rectangles (in
@@ -323,15 +323,28 @@ export function graffitiWallTexture(seed: number) {
   const rnd = mulberry32(seed);
   const { canvas, ctx } = makeCanvas(W, H);
   const base = ctx.createLinearGradient(0, 0, 0, H);
-  base.addColorStop(0, '#e2dbcf');
-  base.addColorStop(1, '#c9c0b2');
+  base.addColorStop(0, '#b7a58d');
+  base.addColorStop(1, '#8e9385');
   ctx.fillStyle = base;
   ctx.fillRect(0, 0, W, H);
   grain(ctx, W, H, rnd, 9000, ['rgba(0,0,0,0.06)', 'rgba(255,255,255,0.08)'], [1, 3]);
   // Paint patches from old cover-ups.
   for (let i = 0; i < 14; i++) {
-    ctx.fillStyle = ['#d6cdbf', '#bfb5a6', '#cfc6b8', '#a9a092'][Math.floor(rnd() * 4)];
+    ctx.fillStyle = ['#bdae98', '#8b9d98', '#a39182', '#b39886'][Math.floor(rnd() * 4)];
     ctx.fillRect(rnd() * W, rnd() * H, 80 + rnd() * 260, 40 + rnd() * 160);
+  }
+  // Older, mural-scale ribbons peek through the new tags and sellable panels.
+  // Their broad shapes remain visible in a camera pass where tiny lettering disappears.
+  for (let i = 0; i < 16; i++) {
+    ctx.save();
+    ctx.translate(rnd() * W, H * (0.3 + rnd() * 0.6));
+    ctx.rotate((rnd() - 0.5) * 1.4);
+    ctx.strokeStyle = SPRAY[i % SPRAY.length];
+    ctx.globalAlpha = 0.42;
+    ctx.lineWidth = 12 + rnd() * 36;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 100 + rnd() * 180, 45 + rnd() * 70, 0, 0, Math.PI * (1.2 + rnd() * 0.6));
+    ctx.stroke(); ctx.restore();
   }
   // Water stains running down from the top.
   for (let i = 0; i < 40; i++) {
@@ -390,4 +403,34 @@ export function graffitiWallTexture(seed: number) {
     ctx.fill();
   }
   return canvasTexture(canvas);
+}
+
+/** A tiny generated height map; no external assets or additional requests. */
+export function surfaceBumpTexture(kind: 'asphalt' | 'plaster' | 'vinyl', seed = 91) {
+  const S = 256;
+  const { canvas, ctx } = makeCanvas(S, S);
+  const rnd = mulberry32(seed);
+  ctx.fillStyle = '#808080'; ctx.fillRect(0, 0, S, S);
+  if (kind === 'vinyl') {
+    // Smooth diagonal creases, small enough that they catch highlights rather than deform type.
+    for (let i = 0; i < 5; i++) {
+      const x = i * S / 5;
+      const g = ctx.createLinearGradient(x, 0, x + 30, S * 0.12);
+      g.addColorStop(0, '#808080'); g.addColorStop(0.4, '#565656');
+      g.addColorStop(0.54, '#999999'); g.addColorStop(1, '#808080');
+      ctx.fillStyle = g; ctx.fillRect(x, 0, 35, S);
+    }
+  } else {
+    for (let i = 0; i < 15000; i++) {
+      const v = Math.floor(85 + rnd() * 90);
+      ctx.fillStyle = `rgb(${v},${v},${v})`;
+      const size = kind === 'plaster' ? 0.5 + rnd() * 2 : 0.5 + rnd();
+      ctx.fillRect(rnd() * S, rnd() * S, size, size);
+    }
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.flipY = false;
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.anisotropy = maxAnisotropy;
+  return texture;
 }

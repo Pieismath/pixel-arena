@@ -56,53 +56,82 @@ export class CourtPainter extends Painted {
     return (z + FLOOR.width / 2) * PX;
   }
 
-  /** Surface, lanes and wear never change, so they're painted once. */
+  /** Acrylic paint over asphalt: broad sun-faded patches, aggregate and shoe wear. */
   private paintBase() {
     const { canvas, ctx } = makeCanvas(this.w, this.h);
     const rnd = mulberry32(21);
     const hl = COURT.length / 2;
     const hw = COURT.width / 2;
-    ctx.fillStyle = '#35285a';
+    ctx.fillStyle = '#354752';
     ctx.fillRect(0, 0, this.w, this.h);
-    ctx.fillStyle = '#5b3f8c';
+    ctx.fillStyle = '#98677e';
     ctx.fillRect(this.X(-hl), this.Z(-hw), COURT.length * PX, COURT.width * PX);
-    // Painted lanes.
-    ctx.fillStyle = '#e46a2e';
+    // A contrasting faded teal key makes both baskets legible in the wide shot.
     for (const s of [1, -1]) {
       const xa = this.X(s * hl);
       const xb = this.X(s * (hl - 19));
+      ctx.fillStyle = '#3d7775';
       ctx.fillRect(Math.min(xa, xb), this.Z(-8), Math.abs(xb - xa), 16 * PX);
+      ctx.fillStyle = '#deb982';
+      ctx.fillRect(this.X(s < 0 ? -hl - 0.85 : hl + 0.45), this.Z(-hw), 0.4 * PX, COURT.width * PX);
     }
-    // Wear: lighter scuffs where players run, a few cracks, grain everywhere.
-    for (let i = 0; i < 70; i++) {
-      const r = 20 + rnd() * 90;
+    // Irregular broad patches of worn acrylic, rather than uniform digital noise.
+    for (let i = 0; i < 160; i++) {
+      const r = 10 + rnd() * 80;
       const grd = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
-      grd.addColorStop(0, 'rgba(255,255,255,0.07)');
-      grd.addColorStop(1, 'rgba(255,255,255,0)');
+      grd.addColorStop(0, i % 3 ? 'rgba(244,205,161,0.13)' : 'rgba(49,49,65,0.10)');
+      grd.addColorStop(1, 'rgba(244,205,161,0)');
       ctx.save();
-      ctx.translate(this.X((rnd() - 0.5) * COURT.length), this.Z((rnd() - 0.5) * COURT.width));
-      ctx.scale(1.6, 1);
+      ctx.translate(rnd() * this.w, rnd() * this.h);
+      ctx.scale(1.5 + rnd(), 0.3 + rnd() * 0.7);
       ctx.fillStyle = grd;
       ctx.fillRect(-r, -r, r * 2, r * 2);
       ctx.restore();
     }
-    for (let i = 0; i < 9000; i++) {
-      ctx.fillStyle = rnd() < 0.5 ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.05)';
-      ctx.fillRect(rnd() * this.w, rnd() * this.h, 1 + rnd() * 2, 1 + rnd() * 2);
+    // Aggregate showing through worn paint around high-traffic areas.
+    for (let i = 0; i < 175; i++) {
+      const x = this.X((rnd() - 0.5) * COURT.length);
+      const y = this.Z((rnd() - 0.5) * COURT.width);
+      const r = 2 + rnd() * 13;
+      ctx.fillStyle = ['#a19487', '#b49d8a', '#737b78', '#bd9b97'][Math.floor(rnd() * 4)];
+      ctx.globalAlpha = 0.12 + rnd() * 0.18;
+      ctx.beginPath();
+      for (let v = 0; v < 9; v++) {
+        const a = v * Math.PI * 2 / 9;
+        const d = r * (0.5 + rnd() * 0.8);
+        const px = x + Math.cos(a) * d * 1.8;
+        const py = y + Math.sin(a) * d;
+        if (v === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.closePath(); ctx.fill();
     }
-    ctx.strokeStyle = 'rgba(20,12,34,0.5)';
-    ctx.lineWidth = 1.5;
-    for (let i = 0; i < 7; i++) {
+    ctx.globalAlpha = 1;
+    for (let i = 0; i < 24000; i++) {
+      ctx.fillStyle = rnd() < 0.55 ? 'rgba(27,32,39,0.10)' : 'rgba(249,227,196,0.12)';
+      const size = 0.5 + rnd() * 1.5;
+      ctx.fillRect(rnd() * this.w, rnd() * this.h, size, size);
+    }
+    // Thin repaired cracks, with a faded rim around the tar.
+    for (let i = 0; i < 8; i++) {
       let x = rnd() * this.w;
       let y = rnd() * this.h;
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      for (let k = 0; k < 14; k++) {
-        x += (rnd() - 0.5) * 40;
-        y += (rnd() - 0.5) * 40;
+      ctx.beginPath(); ctx.moveTo(x, y);
+      for (let k = 0; k < 9; k++) {
+        x += (rnd() - 0.3) * 29;
+        y += (rnd() - 0.5) * 32;
         ctx.lineTo(x, y);
       }
-      ctx.stroke();
+      ctx.strokeStyle = 'rgba(231,200,168,0.18)'; ctx.lineWidth = 3.5; ctx.stroke();
+      ctx.strokeStyle = 'rgba(43,44,52,0.36)'; ctx.lineWidth = 1; ctx.stroke();
+    }
+    // Short rubber arcs under the baskets read as sneaker marks in close shots.
+    ctx.strokeStyle = 'rgba(34,44,49,0.12)';
+    ctx.lineWidth = 1.8;
+    for (let i = 0; i < 105; i++) {
+      const side = rnd() < 0.5 ? -1 : 1;
+      const x = this.X(side * (28 + rnd() * 17));
+      const y = this.Z((rnd() - 0.5) * 24);
+      ctx.beginPath(); ctx.ellipse(x, y, 3 + rnd() * 9, 2 + rnd() * 4, rnd() * 6, 0, Math.PI * 0.7); ctx.stroke();
     }
     return canvas;
   }
@@ -168,6 +197,10 @@ export class CourtPainter extends Painted {
     ctx.fillStyle = 'rgba(248,242,232,0.9)';
     fitText(ctx, title, SIGN_FONT, 70 * PX, 64, 20);
     for (const z of [-(hw + 3.4), hw + 3.4]) ctx.fillText(title, X(0), Z(z));
+    // Sun-bleached pinholes in the painted lines and lettering.
+    const rnd = mulberry32(717);
+    ctx.fillStyle = 'rgba(63,64,67,0.12)';
+    for (let i = 0; i < 1800; i++) ctx.fillRect(rnd() * this.w, rnd() * this.h, 1 + rnd() * 2, 1);
     this.commit();
   }
 }
@@ -215,18 +248,33 @@ export function drawBanner(p: Painted, brand: Brand | null, priceCents: number) 
     fitText(ctx, `FROM ${usd(priceCents)}`, BODY_FONT, w * 0.6, h * (big ? 0.16 : 0.24), 10);
     ctx.fillText(`FROM ${usd(priceCents)}`, w / 2, h * (big ? 0.7 : 0.76));
   }
-  // Grommets, so it reads as a vinyl banner zip-tied on.
-  ctx.fillStyle = 'rgba(220,220,225,0.95)';
-  for (const [x, y] of [
-    [12, 12],
-    [w - 12, 12],
-    [12, h - 12],
-    [w - 12, h - 12],
-  ]) {
-    ctx.beginPath();
-    ctx.arc(x, y, 5, 0, Math.PI * 2);
-    ctx.fill();
+  // Long shallow folds retain readable type while giving the vinyl a physical sheen.
+  for (let i = 0; i < 6; i++) {
+    const x = w * (i + 0.25) / 6;
+    const fold = ctx.createLinearGradient(x, 0, x + w * 0.13, h * 0.32);
+    fold.addColorStop(0, 'rgba(0,0,0,0)');
+    fold.addColorStop(0.38, 'rgba(5,10,20,0.13)');
+    fold.addColorStop(0.52, 'rgba(255,247,224,0.10)');
+    fold.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = fold;
+    ctx.fillRect(x, 0, w * 0.14, h);
   }
+  // Double stitched hem and metal eyelets. Small highlights read even from the camera.
+  ctx.strokeStyle = 'rgba(8,13,18,0.30)'; ctx.lineWidth = 2;
+  ctx.strokeRect(5, 5, w - 10, h - 10);
+  ctx.strokeStyle = 'rgba(255,248,224,0.32)'; ctx.lineWidth = 1;
+  ctx.setLineDash([2, 3]); ctx.strokeRect(8, 8, w - 16, h - 16); ctx.setLineDash([]);
+  for (const x of [13, w / 2, w - 13]) for (const y of [13, h - 13]) {
+    ctx.fillStyle = 'rgba(0,0,0,0.32)';
+    ctx.beginPath(); ctx.ellipse(x + 1, y + 2, 5.5, 5.5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#abb1ac';
+    ctx.beginPath(); ctx.arc(x, y, 4.5, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#eff0d6'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(x, y, 3.6, Math.PI, Math.PI * 1.85); ctx.stroke();
+    ctx.fillStyle = '#283038';
+    ctx.beginPath(); ctx.arc(x, y, 2.1, 0, Math.PI * 2); ctx.fill();
+  }
+
   p.commit();
 }
 
@@ -256,35 +304,34 @@ export function drawMural(p: Painted, brand: Brand | null, priceCents: number, s
     ctx.fillStyle = '#ff3ea5';
     fitText(ctx, `FROM ${usd(priceCents)}`, SIGN_FONT, w * 0.5, h * 0.11, 12);
     ctx.fillText(`FROM ${usd(priceCents)}`, w / 2, h * 0.64);
+    muralPatina(ctx, w, h, seed);
     p.commit();
     return;
   }
-  // Spray-painted background: brand color with soft blobs and a sunburst.
-  ctx.fillStyle = shade(brand.color, 0.75);
+  // Layers of loose spray gestures feel painted onto the wall, with the brand palette intact.
+  ctx.fillStyle = shade(brand.color, 0.82);
   ctx.fillRect(0, 0, w, h);
-  ctx.save();
-  ctx.translate(w / 2, h / 2);
-  for (let i = 0; i < 18; i++) {
-    ctx.rotate((Math.PI * 2) / 18);
-    ctx.fillStyle = i % 2 ? shade(brand.color, 0.9) : shade(brand.color, 1.05);
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.lineTo(w, -w * 0.09);
-    ctx.lineTo(w, w * 0.09);
-    ctx.closePath();
-    ctx.fill();
-  }
-  ctx.restore();
-  for (let i = 0; i < 12; i++) {
-    const r = 30 + rnd() * 90;
-    const grd = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
-    grd.addColorStop(0, shade(brand.color, 1.3) + 'aa');
-    grd.addColorStop(1, shade(brand.color, 1.3) + '00');
+  for (let i = 0; i < 9; i++) {
     ctx.save();
     ctx.translate(rnd() * w, rnd() * h);
-    ctx.fillStyle = grd;
-    ctx.fillRect(-r, -r, r * 2, r * 2);
+    ctx.rotate((rnd() - 0.5) * 1.5);
+    ctx.strokeStyle = i % 3 === 0 ? brand.accent : shade(brand.color, i % 2 ? 0.6 : 1.2);
+    ctx.globalAlpha = i % 3 === 0 ? 0.35 : 0.9;
+    ctx.lineWidth = h * (0.035 + rnd() * 0.10);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, w * (0.2 + rnd() * 0.2), h * (0.15 + rnd() * 0.3), 0, 0, Math.PI * (1.1 + rnd()));
+    ctx.stroke();
     ctx.restore();
+  }
+  // Overspray diffuses the hard gestural marks into the rough substrate.
+  for (let i = 0; i < 15; i++) {
+    const r = 30 + rnd() * 90;
+    const grd = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+    grd.addColorStop(0, shade(brand.color, 1.3) + '77');
+    grd.addColorStop(1, shade(brand.color, 1.3) + '00');
+    ctx.save(); ctx.translate(rnd() * w, rnd() * h);
+    ctx.fillStyle = grd; ctx.fillRect(-r, -r, r * 2, r * 2); ctx.restore();
   }
   // Big outlined name with a drop shadow, like a throw-up piece.
   ctx.textAlign = 'center';
@@ -320,7 +367,39 @@ export function drawMural(p: Painted, brand: Brand | null, priceCents: number, s
     ctx.arc(x + 2, y + len, 4, 0, Math.PI * 2);
     ctx.fill();
   }
+  muralPatina(ctx, w, h, seed);
   p.commit();
+}
+
+/** Local plaster detail, reused on both occupied and available wall space. */
+function muralPatina(ctx: CanvasRenderingContext2D, w: number, h: number, seed: number) {
+  const rnd = mulberry32(seed + 733);
+  ctx.save();
+  // Fine uneven pores leave the mural readable rather than drowning it in noise.
+  for (let i = 0; i < 11000; i++) {
+    ctx.fillStyle = i % 3 ? 'rgba(22,28,30,0.085)' : 'rgba(242,222,191,0.20)';
+    const size = 0.5 + rnd() * 1.8;
+    ctx.fillRect(rnd() * w, rnd() * h, size, size * 0.8);
+  }
+  // Mortar is still faintly visible through layers of acrylic paint.
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = 'rgba(32,29,36,0.13)';
+  const course = Math.max(24, h / 6);
+  for (let row = 0; row < 6; row++) {
+    const y = row * course;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+    for (let x = row % 2 ? -course : 0; x < w; x += course * 2.7) {
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + course); ctx.stroke();
+    }
+  }
+  // Chipped edges and a couple of short water trails physically anchor the paint.
+  for (let i = 0; i < 140; i++) {
+    const x = rnd() * w;
+    const y = rnd() < 0.5 ? rnd() * 10 : h - rnd() * 14;
+    ctx.fillStyle = rnd() < 0.4 ? '#b9aa93' : 'rgba(225,210,182,0.35)';
+    ctx.fillRect(x, y, 1 + rnd() * 7, 1 + rnd() * 3);
+  }
+  ctx.restore();
 }
 
 // --- Naming sign ------------------------------------------------------------------------------
@@ -345,6 +424,16 @@ export function drawNamingSign(p: Painted, brand: Brand | null, priceCents: numb
     fitText(ctx, `NAMING RIGHTS ${usd(priceCents)}`, SIGN_FONT, w * 0.3, h * 0.3, 12);
     ctx.fillText(`NAMING RIGHTS ${usd(priceCents)}`, w * 0.83, h * 0.54);
   }
+  const shadeEdge = ctx.createLinearGradient(0, 0, 0, h);
+  shadeEdge.addColorStop(0, 'rgba(255,247,220,0.12)');
+  shadeEdge.addColorStop(0.18, 'rgba(0,0,0,0)');
+  shadeEdge.addColorStop(0.85, 'rgba(0,0,0,0)');
+  shadeEdge.addColorStop(1, 'rgba(0,0,0,0.24)');
+  ctx.fillStyle = shadeEdge; ctx.fillRect(0, 0, w, h);
+  for (const x of [20, w - 20]) for (const y of [20, h - 20]) {
+    ctx.fillStyle = '#80928d'; ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#32393a'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x - 2, y); ctx.lineTo(x + 2, y); ctx.stroke();
+  }
   p.commit();
 }
 
@@ -353,6 +442,7 @@ export function drawNamingSign(p: Painted, brand: Brand | null, priceCents: numb
 type ScreenMode = 'ad' | 'score' | 'promo' | 'flash';
 
 export class ScreenPainter extends Painted {
+  private readonly led: HTMLCanvasElement;
   private renter: Brand | null = null;
   private dayPrice = 0;
   private mode: ScreenMode = 'promo';
@@ -362,6 +452,21 @@ export class ScreenPainter extends Painted {
 
   constructor() {
     super(768, 432);
+    const { canvas, ctx } = makeCanvas(this.w, this.h);
+    // Pixel cells and module seams are baked once; ten screen redraws per second stay cheap.
+    ctx.fillStyle = 'rgba(0,0,0,0.22)';
+    for (let y = 0; y < this.h; y += 4) ctx.fillRect(0, y, this.w, 1);
+    ctx.fillStyle = 'rgba(0,0,0,0.12)';
+    for (let x = 0; x < this.w; x += 4) ctx.fillRect(x, 0, 1, this.h);
+    ctx.fillStyle = 'rgba(0,0,0,0.16)';
+    for (let x = 0; x < this.w; x += 128) ctx.fillRect(x, 0, 2, this.h);
+    for (let y = 0; y < this.h; y += 108) ctx.fillRect(0, y, this.w, 2);
+    const glass = ctx.createLinearGradient(0, 0, this.w * 0.6, this.h);
+    glass.addColorStop(0, 'rgba(165,220,237,0.09)');
+    glass.addColorStop(0.5, 'rgba(165,220,237,0)');
+    glass.addColorStop(1, 'rgba(0,0,0,0.06)');
+    ctx.fillStyle = glass; ctx.fillRect(0, 0, this.w, this.h);
+    this.led = canvas;
   }
 
   set(renter: Brand | null, dayPriceCents: number) {
@@ -393,10 +498,7 @@ export class ScreenPainter extends Painted {
     else if (this.mode === 'flash' && this.flashInfo) this.drawFlash(this.flashInfo.team, this.flashInfo.points);
     else if (this.mode === 'promo') this.drawPromo(t);
     else this.drawScore(sb);
-    // Faint LED rows.
-    const { ctx, w, h } = this;
-    ctx.fillStyle = 'rgba(0,0,0,0.12)';
-    for (let y = 0; y < h; y += 3) ctx.fillRect(0, y, w, 1);
+    this.ctx.drawImage(this.led, 0, 0);
     this.commit();
   }
 
