@@ -330,3 +330,60 @@ h1 { font-family: 'Inter', sans-serif; font-size: clamp(24px, 2.6vw, 37px); lett
 }
 
 @media(min-width:701px) { .show-spots .panel { max-height:calc(100dvh - 320px); z-index:2; } }
+
+/* Quiet scene-first chrome. Inventory opens only when requested. */
+#ui::before { height:110px; background:linear-gradient(#101b2599,transparent); }
+#ui::after,.business-promise,.preview-label,.chips,.game-hud,.dock-caption .interaction-hint,.tier-index,.tier-desc { display:none; }
+.hud-top { padding:22px 24px 0; align-items:center; }
+.wordmark { font-size:8px; letter-spacing:.18em; opacity:.78; }
+.court-mark { display:none; }
+h1 { font-size:23px; margin:5px 0 2px; letter-spacing:-.045em; }
+.naming-line { font-size:9px; opacity:.7; }
+.hud-right { gap:0; }
+.toolbar { gap:10px; }
+.advertise-button { background:#f5f3eb; color:#222b28; border:0; border-radius:24px; padding:12px 19px; font-size:12px; box-shadow:0 3px 22px #10192325; }
+.more-menu { position:relative; pointer-events:auto; }
+.more-menu summary { list-style:none; border:1px solid #ffffff44; border-radius:50%; width:38px; height:38px; display:grid; place-items:center; cursor:pointer; background:#12201e75; }
+.more-menu summary::-webkit-details-marker { display:none; }
+.more-menu-items { position:absolute; top:48px; right:0; width:155px; padding:9px; border-radius:14px; background:#17231fee; box-shadow:var(--shadow); display:grid; z-index:8; }
+.more-menu-items .pbtn { display:block!important; width:100%; text-align:left; border:0; }
+.explore-bar,.show-spots .explore-bar { bottom:24px; left:24px; right:24px; }
+.views { border-radius:24px; padding:4px; border:1px solid #ffffff22; }
+.view-button { border-radius:20px; font-size:10px; padding:8px 12px; }
+.game-actions { gap:5px; }
+.highlight-button { border-radius:22px; min-height:36px; font-size:10px; padding:9px 13px; }
+#btn-highlight { display:none; }
+.spot-dock { top:87px; right:24px; left:auto; bottom:auto; width:295px; border-radius:18px; padding:20px; background:#f6f5ef; color:#25302b; box-shadow:0 15px 50px #111b2045; }
+.dock-caption { margin:0 0 10px; font-size:15px; letter-spacing:-.02em; }
+.tiers { display:flex; margin:0; flex-direction:column; background:transparent; box-shadow:none; border-radius:0; overflow:visible; }
+.tier { display:flex; flex:0 0 auto; align-items:center; gap:8px; min-height:54px; padding:12px 20px 12px 0; border:0; border-bottom:1px solid #25302b15; background:none; }
+.tier-name { font-size:13px; font-weight:500; flex:1; }
+.tier-price { font-size:14px; font-weight:600; letter-spacing:0; }
+.tier-price small { font-size:9px; }
+.tier-arrow { font-size:13px; right:0; top:19px; }
+.panel,.show-spots .panel { left:auto; bottom:auto; top:87px; right:24px; width:325px; max-height:calc(100dvh - 167px); padding:24px; border-radius:18px; background:#f6f5ef; }
+.panel h2 { font-size:22px; margin:10px 0 16px; }
+.panel p { font-size:11px; }
+.brand-card { border-radius:8px; }
+.cta { border-radius:24px; font-size:12px; }
+.brand-studio { margin-top:18px; }
+.brand-studio summary,.spot-terms summary { cursor:pointer; font-size:12px; padding:10px 0; }
+.spot-terms p { margin-top:5px; }
+.share-button { border-radius:22px; }
+#brand-preview-strip { top:91px; font-size:10px; border-radius:16px; }
+@media(max-width:700px) {
+ .hud-top { padding:16px 14px 0; gap:8px; }
+ .title-block { max-width:48%; }
+ h1 { font-size:19px; }
+ .wordmark { font-size:7px; }
+ .naming-line { max-width:165px; font-size:8px; }
+ .advertise-button { padding:10px 12px; font-size:10px; }
+ .toolbar { gap:6px; flex-direction:row; flex-wrap:nowrap; align-items:center; }
+ .more-menu summary { width:32px; height:32px; }
+ .spot-dock { top:83px; right:14px; width:min(295px,calc(100vw - 28px)); }
+ .panel,.show-spots .panel { top:83px; right:14px; width:min(325px,calc(100vw - 28px)); max-height:calc(100dvh - 156px); }
+ .explore-bar,.show-spots .explore-bar { left:14px; right:14px; bottom:18px; }
+ .view-button { min-height:32px; padding:7px 10px; }
+ #brand-preview-strip { top:82px; max-width:calc(100vw - 28px); }
+ body:has(#brand-preview-strip:not([hidden])) .panel { top:124px; max-height:calc(100dvh - 197px); }
+}

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { hash01 } from '../data/random';
 import type { ArenaState, SeatSale, SpotRef } from '../data/types';
+import neighbors from './neighbors.json';
 import { SEAT_INDEX, SEATS, seatKey } from './layout';
 
 const HAIRS = ['Short', 'Afro', 'Cap'] as const;
@@ -124,6 +125,41 @@ export function createCrowd(gltf: GLTF) {
   });
   const motion: CrowdMotion = { time: { value: 0 }, reaction: { value: 0 } };
   const material = fanMaterial(motion);
+
+  // Residents and sidewalk spectators belong to the neighborhood, not sale inventory.
+  for (const inWindow of [false,true]) for (let variant=0;variant<3;variant++) {
+    const people=neighbors.filter((n,i)=>n.window===inWindow && i%3===variant);
+    if(!people.length) continue;
+    const source=geometries.get(`Stand_${HAIRS[variant]}`)!;
+    let geo=source.clone();
+    if(inWindow) {
+      // Crop at the window sill so legs never render through the facade below it.
+      const flat=geo.index?geo.toNonIndexed():geo;
+      const pos=flat.getAttribute('position');const keep:number[]=[];
+      for(let i=0;i<pos.count;i+=3) if(Math.min(pos.getY(i),pos.getY(i+1),pos.getY(i+2))>=3.3)keep.push(i,i+1,i+2);
+      const cropped=new THREE.BufferGeometry();
+      for(const [name,attr] of Object.entries(flat.attributes)) {
+        const values=new Float32Array(keep.length*attr.itemSize);
+        keep.forEach((id,k)=>{for(let j=0;j<attr.itemSize;j++)values[k*attr.itemSize+j]=j===0?attr.getX(id):j===1?attr.getY(id):j===2?attr.getZ(id):attr.getW(id);});
+        cropped.setAttribute(name,new THREE.BufferAttribute(values,attr.itemSize));
+      }
+      geo.dispose();if(flat!==geo)flat.dispose();geo=cropped;geo.translate(0,-3.3,0);
+    }
+    const attrs:Record<string,Float32Array>={iSkin:new Float32Array(people.length*3),iShirt:new Float32Array(people.length*3),iPants:new Float32Array(people.length*3),iHair:new Float32Array(people.length*3),iShoe:new Float32Array(people.length*3)};
+    const moving=new Float32Array(people.length*4);
+    const mesh=new THREE.InstancedMesh(geo,material,people.length);mesh.name=inWindow?'Window residents':'Sidewalk spectators';mesh.receiveShadow=true;
+    const matrix=new THREE.Matrix4(),quat=new THREE.Quaternion(),axis=new THREE.Vector3(0,1,0);
+    people.forEach((person,i)=>{
+      const seed=i*97+variant*133+(inWindow?41:0),scale=.84+hash01(seed)*.18;
+      quat.setFromAxisAngle(axis,person.yaw+(inWindow?0:(hash01(seed+3)-.5)*.35));
+      mesh.setMatrixAt(i,matrix.compose(new THREE.Vector3(...person.position as [number,number,number]),quat,new THREE.Vector3(scale,scale,scale)));
+      for(const [name,palette] of [['iSkin',SKIN],['iShirt',SHIRTS],['iPants',PANTS],['iHair',HAIR],['iShoe',SHOES]] as const)pickColor(palette,seed+name.length).toArray(attrs[name],i*3);
+      moving.set([hash01(seed)*Math.PI*2,hash01(seed+5),4,0],i*4);
+    });
+    for(const [name,data] of Object.entries(attrs))geo.setAttribute(name,new THREE.InstancedBufferAttribute(data,3));
+    geo.setAttribute('iMotion',new THREE.InstancedBufferAttribute(moving,4));mesh.computeBoundingSphere();group.add(mesh);
+  }
+
 
   // Invisible boxes over every seat, so empty seats can be clicked too.
   const proxy = new THREE.InstancedMesh(new THREE.BoxGeometry(1.9, 4.6, 2.2).translate(0, 2.3, 0.2), new THREE.MeshBasicMaterial({ visible: false }), SEATS.length);

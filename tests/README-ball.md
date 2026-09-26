@@ -22,12 +22,12 @@ Throughout that reproduction the ball remained a single attached, visible, opaqu
 
 The regression validates authored animation coverage, numerical position continuity, ground clearance, exact pass/palm contact, ball lifetime/count, normal material depth behavior, parent transforms, and actual manual move/pass/shot inputs. It repeats dribble/pass/shot/miss/rebound/dunk/score/reset sequences at fixed and variable frame times. `evidence/ball-after.json` records results from the final production assets.
 
-## Verified shipped voxel asset
+## Verified shipped faceted asset
 
-GLB SHA256: `15ea5794c39089aac8e14a6c06520fe033e3530da03b7218e2cdc7ef0e77ad05`.
+GLB SHA256: `e0c127abf652f38f0a23b6aafd2e373a221f24a9ab43f4c0c772b694d1fad7a7`.
 
-The current voxel cast retains the 55-bone skeleton, all 15 clips and the exact palm-contact sockets. Its new block geometry is original project work. The regression passed **47,310 frames**, **131 exact palm catches**, and **55 scoring sequences** after the speed/turning and collision changes. Maximum ball movement was 0.72703 feet/frame at 60 Hz and 1.45511 at 30 Hz. Mixed 20–120 Hz tests, transformed parents and manual controls also passed.
+The cast retains 55 bones, 15 clips and the exact palm-contact sockets. Geometry now uses chamfered heads, tapered eight-sided limbs, shaped jerseys and irregular hair tufts. Run and RunDribble have shorter strides, a quieter pelvis and shoulder counter-rotation. Runtime transitions preserve stride phase and use separate start/stop thresholds.
 
-Run stance remains calibrated to 9.36084 court feet/second and shuffle to 2.516097. The voxel meshes change appearance without moving the attachment bones. The runtime now advances slow rendered frames through bounded 60 Hz simulation steps, rather than discarding all time above 50 ms. Character contact shadows are separate from the authoritative ball object. Low quality caches static neighborhood shadows and keeps moving character contact shadows.
+The regression result in `evidence/ball-after.json` includes deterministic autoplay, mixed 20–120 Hz updates, transformed parents, manual controls and all clips. Run stance is calibrated to 6.34121 court feet/second; measured planted-foot drift is below .005 feet. Shuffle remains calibrated to 2.516097. The manual test waits until the inbound/pass has completed before applying movement input.
 
-The inherited facial-morph guard is retained for compatibility with the earlier anatomical asset; the voxel cast itself uses modeled pixel faces, without facial morph targets.
+The inherited facial-morph guard remains for compatibility with the earlier anatomical asset; the current cast uses modeled faces without morph targets.

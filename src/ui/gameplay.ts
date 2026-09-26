@@ -53,6 +53,9 @@ export function createGameplay(game: GameSim, follow: () => void) {
   document.getElementById('btn-pass')!.addEventListener('click', () => game.requestPass());
   document.getElementById('btn-spots')!.addEventListener('click', () => {
     if (manual) toggle();
+    const panel=document.getElementById('panel')!;
+    if(!panel.hidden) panel.querySelector<HTMLButtonElement>('.panel-close')?.click();
+    document.querySelector('.more-menu')?.removeAttribute('open');
     const open = document.body.classList.toggle('show-spots');
     document.getElementById('btn-spots')!.setAttribute('aria-expanded', String(open));
   });

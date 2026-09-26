@@ -1,6 +1,6 @@
 # Current voxel cast and city assets
 
-The shipped `baller.glb` and `fans.glb` now use original voxel/block geometry, stepped hairstyles, pixel faces, sneakers and basketball kits authored in `blender/build_voxel_characters.py`. The two user-supplied images are visual direction only; no source pixels, stock artwork or watermarks are embedded.
+The shipped `baller.glb` and `fans.glb` now use original faceted geometry with chamfered heads, tapered limbs and continuous jerseys, stepped hairstyles, pixel faces, sneakers and basketball kits authored in `blender/build_voxel_characters.py`. The two user-supplied images are visual direction only; no source pixels, stock artwork or watermarks are embedded.
 
 The 55-bone rig uses the CC0 MakeHuman/MPFB game-engine skeleton. The 15 basketball animation clips and palm-contact sockets are project-authored and retained in `blender/sources/basketball-motion.blend`. [MakeHuman license](https://github.com/makehumancommunity/makehuman/blob/master/LICENSE.md).
 
@@ -12,7 +12,7 @@ Build the cast with Blender 5.2:
 /Applications/Blender.app/Contents/MacOS/Blender --background --factory-startup --python blender/build_voxel_characters.py
 ```
 
-The main voxel body has 996 triangles; the most detailed optional hairstyle has 348. Crowd geometry is baked into 15 pose/style batches. The ball and its physical depth behavior are unchanged.
+The main voxel body has 4,006 triangles; the most detailed optional hairstyle has 1,740. Crowd geometry is baked into 15 pose/style batches. Run and RunDribble are re-authored with shorter strides and shoulder counter-rotation; action clips retain their contact timing. The ball and its physical depth behavior are unchanged.
 
 ## Earlier anatomical version retained in source history
 

@@ -1,11 +1,12 @@
-"""Original voxel basketball cast. Blender meshes retain the tested basketball skeleton/socket clips.
+"""Original faceted basketball cast. Shaped meshes retain the tested basketball skeleton/socket clips.
 Run Blender --background --python blender/build_voxel_characters.py
-The block geometry and pixel faces are original work; reference images are not embedded.
+The faceted geometry and pixel faces are original work; reference images are not embedded.
 """
 import bpy, math, os, json, random
 from mathutils import Vector, Matrix, Euler, Quaternion
 HERE=os.path.dirname(os.path.abspath(__file__))
 OUT=os.path.join(HERE,'../public/models')
+os.makedirs(os.path.join(HERE,'../work/voxel'),exist_ok=True)
 SOURCE=os.path.join(HERE,'sources/basketball-motion.blend')
 if not os.path.exists(SOURCE):
  bpy.ops.wm.open_mainfile(filepath=os.path.join(HERE,'../work/athlete/adult-athlete-authored.blend'))
@@ -56,15 +57,15 @@ def pose(kind,t):
  hip=-.07;hop=0;lean=.035;spread=.225;lefty=.015;righty=.015;leftz=.088;rightz=.088
  ball=Vector((-.37,-.36,1.17));other=Vector((.37,-.22,1.13));fd=(0,-1,0);pn=(0,0,-1)
  if kind in ['Run','RunDribble']:
-  hip=-.225+.025*math.cos(t*math.tau*2);lean=.12
+  hip=-.13+.018*math.cos(t*math.tau*2);lean=.085
   # Linear backward ground travel is the stance. The return lifts clear of the court.
   for side,phase in [('l',t),('r',(t+.5)%1)]:
    u=phase%1
-   if u<.5:y=-.62+2.48*u;z=.088
-   else:v=(u-.5)*2;y=.62-1.24*(v*v*(3-2*v));z=.088+.23*math.sin(v*math.pi)
+   if u<.5:y=-.42+1.68*u;z=.088
+   else:v=(u-.5)*2;y=.42-.84*(v*v*(3-2*v));z=.088+.16*math.sin(v*math.pi)
    if side=='l':lefty,leftz=y,z
    else:righty,rightz=y,z
-  ball=Vector((-.30,-.29+.10*s,1.21));other=Vector((.29,-.27-.10*s,1.21))
+  ball=Vector((-.30,-.29+.10*s,1.21));other=Vector((.29,-.27-.20*s,1.21))
  if kind in ['IdleDribble','RunDribble','Crossover']:
   ball=Vector((-.38,-.36,1.08+.16*(.5-.5*math.cos(t*math.tau))))
   other=Vector((.28,-.21,1.18));hip-=.03
@@ -102,7 +103,7 @@ def pose(kind,t):
   if kind=='Card':ball=Vector((-.28,-.45,1.56));other=Vector((.28,-.45,1.56));pn=(1,0,0)
  # Pelvis local matrix translation is a world vector, not its tilted local axis.
  p['pelvis'].matrix=Matrix.Translation((.014*s if kind in ['Idle','IdleDribble'] else 0,0,hip))@REST['pelvis']
- p['spine_01'].rotation_quaternion=Euler((lean,0,.018*s if kind=='Idle' else 0),'XYZ').to_quaternion()
+ p['spine_01'].rotation_quaternion=Euler((lean,.025*s if kind in ['Run','RunDribble'] else 0,.065*s if kind in ['Run','RunDribble'] else .018*s if kind=='Idle' else 0),'XYZ').to_quaternion()
  bpy.context.view_layer.update()
  leftx,rightx=spread,-spread
  if kind=='Shuffle':
@@ -137,15 +138,46 @@ palette=bpy.data.materials.new('VoxelPalette');palette.diffuse_color=(1,1,1,1)
 class Blocks:
  def __init__(self,name):self.name=name;self.verts=[];self.faces=[];self.regions=[];self.weights=[]
  def box(self,c,size,region,bone='head',shade=1,rot=None):
-  start=len(self.verts);c=Vector(c);rot=rot or Matrix.Identity(3)
-  for v in [(-1,-1,-1),(1,-1,-1),(1,1,-1),(-1,1,-1),(-1,-1,1),(1,-1,1),(1,1,1),(-1,1,1)]:
-   self.verts.append(c+rot@Vector(tuple(v[i]*size[i]/2 for i in range(3))));self.weights.append(bone)
-  for f in [(0,3,2,1),(0,1,5,4),(1,2,6,5),(2,3,7,6),(3,0,4,7),(4,5,6,7)]:
-   self.faces.append(tuple(start+i for i in f));self.regions.append((region,shade))
+  # Three chamfered octagonal rings: broad planes with sculpted corners, not cubes.
+  c=Vector(c);rot=rot or Matrix.Identity(3);x,y,z=[v/2 for v in size]
+  bevel=min(x,y,z)*.23 if min(size)>.035 else 0
+  if bevel==0:
+   rings=[(-z,x,y),(z,x,y)]
+  else:rings=[(-z,x-bevel,y-bevel),(-z+bevel,x,y),(z-bevel,x,y),(z,x-bevel,y-bevel)]
+  start=len(self.verts)
+  for zz,xx,yy in rings:
+   cut=min(xx,yy)*.26
+   for vx,vy in [(-xx+cut,-yy),(xx-cut,-yy),(xx,-yy+cut),(xx,yy-cut),(xx-cut,yy),(-xx+cut,yy),(-xx,yy-cut),(-xx,-yy+cut)]:
+    self.verts.append(c+rot@Vector((vx,vy,zz)));self.weights.append(bone)
+  self.faces.append(tuple(start+i for i in reversed(range(8))));self.regions.append((region,shade))
+  for j in range(len(rings)-1):
+   for i in range(8):
+    self.faces.append((start+j*8+i,start+j*8+(i+1)%8,start+(j+1)*8+(i+1)%8,start+(j+1)*8+i));self.regions.append((region,shade))
+  self.faces.append(tuple(start+(len(rings)-1)*8+i for i in range(8)));self.regions.append((region,shade))
  def limb(self,bone,start,end,width,depth,reg,shade=1):
   b=rig.data.bones[bone];a=b.head_local.lerp(b.tail_local,start);z=b.head_local.lerp(b.tail_local,end);d=z-a
-  self.box((a+z)/2,(width,depth,d.length+.012),reg,bone,shade,d.to_track_quat('Z','Y').to_matrix())
+  # Rounded, tapered eight-sided limbs; fingers retain small readable facets.
+  basis=d.to_track_quat('Z','Y').to_matrix();base=len(self.verts)
+  for t,r in [(0,.78),(.18,1),(.72,.92),(1,.72)]:
+   for i in range(8):
+    angle=math.tau*i/8+math.pi/8
+    self.verts.append(a+d*t+basis@Vector((math.cos(angle)*width*r*.5,math.sin(angle)*depth*r*.5,0)));self.weights.append(bone)
+  self.faces.append(tuple(base+i for i in reversed(range(8))));self.regions.append((reg,shade))
+  for j in range(3):
+   for i in range(8):self.faces.append((base+j*8+i,base+j*8+(i+1)%8,base+(j+1)*8+(i+1)%8,base+(j+1)*8+i));self.regions.append((reg,shade))
+  self.faces.append(tuple(base+24+i for i in range(8)));self.regions.append((reg,shade))
+ def jersey(self):
+  base=len(self.verts)
+  for z,w,d,bone in [(1.115,.195,.140,'pelvis'),(1.22,.183,.143,'spine_02'),(1.38,.220,.153,'spine_02'),(1.52,.244,.142,'spine_03'),(1.595,.176,.107,'spine_03')]:
+   for x,y in [(-.74,-1),(.74,-1),(1,-.65),(1,.65),(.74,1),(-.74,1),(-1,.65),(-1,-.65)]:
+    self.verts.append(Vector((x*w,y*d-.008,z)));self.weights.append(bone)
+  for j in range(4):
+   for i in range(8):self.faces.append((base+j*8+i,base+j*8+(i+1)%8,base+(j+1)*8+(i+1)%8,base+(j+1)*8+i));self.regions.append((1,.92 if i in [2,6] else 1))
+  self.faces.append(tuple(base+32+i for i in range(8)));self.regions.append((1,1))
  def mesh(self):
+  for i,bone in enumerate(self.weights):
+   if bone=='head':
+    v=self.verts[i];v.x*=.82;v.y*=.92;v.z=1.85+(v.z-1.85)*.89
   m=bpy.data.meshes.new(self.name);m.from_pydata(self.verts,[],self.faces);m.update()
   o=bpy.data.objects.new(self.name,m);scene.collection.objects.link(o);o.parent=rig
   m.materials.append(palette);attr=m.color_attributes.new(name='Region',type='FLOAT_COLOR',domain='CORNER')
@@ -162,9 +194,7 @@ class Blocks:
   return o
 b=Blocks('VoxelAthlete')
 # Stepped jersey: flat planes, pixel seam panels, recognizable athletic silhouette.
-b.box((0,.008,1.16),(.40,.28,.18),3,'pelvis')
-b.box((0,-.008,1.29),(.405,.30,.27),1,'spine_02')
-b.box((0,-.008,1.48),(.47,.305,.23),1,'spine_03')
+b.jersey()
 b.box((0,.012,1.615),(.135,.135,.14),0,'neck_01')
 for s in [-1,1]:
  b.box((s*.205,-.172,1.45),(.036,.014,.25),2,'spine_03')
@@ -174,12 +204,12 @@ for s in [-1,1]:
  b.box((s*.094,-.171,1.19),(.09,.019,.029),2,'spine_02')
 b.box((0,-.005,1.129),(.414,.29,.038),2,'pelvis')
 # Broad pixel head, stepped jaw and asymmetrical face pixels.
-b.box((0,-.044,1.869),(.40,.35,.365),0)
+b.box((0,-.044,1.869),(.40,.35,.345),0)
 b.box((0,-.058,1.698),(.30,.30,.080),0,shade=.9)
 for s in [-1,1]:
  b.box((s*.212,-.037,1.842),(.055,.10,.105),0,shade=.87)
- b.box((s*.094,-.226,1.892),(.095,.016,.050),7)
- b.box((s*.079,-.238,1.887),(.038,.013,.047),8)
+ b.box((s*.094,-.226,1.892),(.080,.016,.032),7)
+ b.box((s*.079,-.238,1.887),(.036,.013,.035),8)
  b.box((s*.086,-.228,1.945),(.115,.019,.026),9)
  b.box((s*.14,-.225,1.806),(.071,.014,.036),0,shade=1.1)
 b.box((0,-.239,1.835),(.056,.064,.064),0,shade=.90)
@@ -214,7 +244,7 @@ for style in ['HairBuzz','HairAfro','HairTwists','HairBeard','Headband']:
  elif style=='Headband':
   h.box((0,-.048,1.986),(.426,.375,.055),2)
  else:
-  h.box((0,-.030,2.046),(.417,.365,.13),9,shade=.9)
+  h.box((0,-.030,2.046),(.405,.355,.10),9,shade=.9)
   for s in [-1,1]:h.box((s*.191,.004,1.972),(.06,.29,.17),9,shade=.82)
   h.box((0,.122,1.957),(.39,.05,.20),9,shade=.76)
   if style!='HairBuzz':
@@ -222,7 +252,7 @@ for style in ['HairBuzz','HairAfro','HairTwists','HairBeard','Headband']:
    for ix in range(-2,3):
     for iy in range(-2,3):
      ht=rr.choice([.055,.085,.12]) if style=='HairAfro' else rr.choice([.045,.075])
-     h.box((ix*.085,iy*.077-.025,2.108+ht/2),(.09,.083,ht),9,shade=rr.uniform(.73,1.05))
+     h.box((ix*.075+rr.uniform(-.012,.012),iy*.068-.025,2.079+ht/2-(abs(ix)+abs(iy))*.008),(.10,.092,ht+.025),9,shade=rr.uniform(.8,1.05),rot=Euler((rr.uniform(-.15,.15),rr.uniform(-.22,.22),rr.uniform(-.2,.2))).to_matrix())
  optional.append(h.mesh())
 # Flat number plates remain editable at runtime for each fictional player.
 def number(name,back):
@@ -235,6 +265,18 @@ def number(name,back):
  vg=o.vertex_groups.new(name='spine_02');vg.add(range(4),1,'REPLACE');mod=o.modifiers.new('Rig','ARMATURE');mod.object=rig;me.materials.append(palette)
  return o
 numbers=[number('NumberFront',False),number('NumberBack',True)]
+# A shorter stride, quieter pelvis, opposing shoulder swing, and a planted stance.
+# Re-author only locomotion; action release/contact timing stays unchanged.
+for name in ['Run','RunDribble']:
+ old=bpy.data.actions.get(name)
+ if old:bpy.data.actions.remove(old)
+ rig.animation_data_create();act=bpy.data.actions.new(name);rig.animation_data.action=act;act.use_fake_user=True
+ for f in range(41):
+  frame=f*.5;scene.frame_set(int(frame),subframe=frame%1);pose(name,f/40)
+  for pb in rig.pose.bones:
+   pb.keyframe_insert('rotation_quaternion',frame=frame,group=pb.name);pb.keyframe_insert('location',frame=frame,group=pb.name)
+rig.animation_data.action=None;reset_pose()
+
 active(rig)
 for o in [body]+optional+numbers:o.select_set(True)
 bpy.ops.export_scene.gltf(filepath=os.path.join(OUT,'baller.glb'),export_format='GLB',use_selection=True,export_yup=True,export_animations=True,export_animation_mode='ACTIONS',export_skins=True,export_vertex_color='ACTIVE',export_force_sampling=True,export_optimize_animation_size=True)
@@ -258,7 +300,7 @@ for pn in ['Sit','Clap','Card','Cheer','Stand']:
 active(fans[0])
 for o in fans:o.select_set(True)
 bpy.ops.export_scene.gltf(filepath=os.path.join(OUT,'fans.glb'),export_format='GLB',use_selection=True,export_yup=True,export_apply=True,export_animations=False,export_skins=False,export_vertex_color='ACTIVE')
-report={'style':'Original voxel geometry and pixel faces; existing tested basketball skeleton and clips','bones':len(rig.data.bones),'clips':[a.name for a in bpy.data.actions],'meshes':{}}
+report={'style':'Original faceted geometry, tapered limbs and pixel faces; re-authored locomotion on the tested basketball skeleton','bones':len(rig.data.bones),'clips':[a.name for a in bpy.data.actions],'meshes':{}}
 for o in [body]+optional:
  o.data.calc_loop_triangles();report['meshes'][o.name]=len(o.data.loop_triangles)
 json.dump(report,open(os.path.join(HERE,'../work/voxel/assets.json'),'w'),indent=2)

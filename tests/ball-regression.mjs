@@ -33,7 +33,7 @@ for (const clip of expectedClips) assert(gltf.animations.some(a => a.name === cl
 for (const grip of ['ballGripR', 'ballGripL']) assert(gltf.scene.getObjectByName(grip), `Missing modeled palm socket ${grip}`);
 
 const footPlant = {};
-for (const [name, speed, axis] of [['Run', 9.36084, 'z'], ['RunDribble', 9.36084, 'z'], ['Shuffle', 2.516097, 'x']]) {
+for (const [name, speed, axis] of [['Run', 6.34121, 'z'], ['RunDribble', 6.34121, 'z'], ['Shuffle', 2.516097, 'x']]) {
   const root = SkeletonUtils.clone(gltf.scene), mixer = new THREE.AnimationMixer(root);
   const clip = gltf.animations.find(a => a.name === name);
   mixer.clipAction(clip).play();
@@ -124,7 +124,11 @@ for (let frame = 0; frame < 600; frame++) tick();
 
 // Real input drives the existing ball owner; pass and shot requests run the same state machine.
 sim.setManualControl(true);
-for (let frame = 0; !sim.qaSnapshot().holder && frame < 600; frame++) tick();
+for (let frame = 0; frame < 1200; frame++) {
+  const ready = sim.qaSnapshot();
+  if (ready.holder && !['fetch','inbound','pass','shot','dunk'].includes(ready.phase) && sim.holder.busy <= 0) break;
+  tick();
+}
 assert(sim.qaSnapshot().holder, 'Manual mode never regained possession');
 const beforeMove = sim.holder.pos.clone();
 sim.setManualInput(0, 1);

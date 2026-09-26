@@ -28,6 +28,7 @@ OUT = os.path.abspath(ARGS[0]) if ARGS and not ARGS[0].startswith("--") else os.
 PREVIEW = ARGS[ARGS.index("--preview") + 1] if "--preview" in ARGS else None
 L = json.load(open(os.path.join(HERE, "..", "src", "world", "park-layout.json")))
 rng = random.Random(7)
+NEIGHBORS=[]
 
 
 def B(x, y, z):
@@ -50,6 +51,7 @@ COLORS = {
     "Net": ("#f5f5f5", 0.8), "SeatMetal": ("#272f2e", 0.76), "Stair": ("#c1a477", 0.9), "RoadPaint": ("#ddd6bc", 0.85), "CarBody": ("#343f47", 0.5), "CarSilver": ("#9dacae", 0.45), "CarRed": ("#77433c", 0.5), "Tire": ("#202321", 0.95), "LeafOchre": ("#7d8443", 0.9), "Rim": ("#e8531f", 0.5), "Backboard": ("#f4f4f4", 0.4),
     "BannerBack": ("#e9e6df", 0.9), "ScreenFrame": ("#15171e", 0.6), "ShopGlass": ("#2b3a4a", 0.2),
     "WindowGlass": ("#283c46", .22), "WindowBlue": ("#47616b", .23), "WindowWarm": ("#897352", .45), "WindowFrame": ("#393833", .65), "CarGlass": ("#243d49", .19), "Chrome": ("#9caaae", .28), "TailLight": ("#9c2018", .28), "Headlight": ("#e5e6d7", .25),
+    "FacadeCream": ("#c4b799", .88), "FacadeBrown": ("#715548", .9), "FacadePale": ("#aaada5", .88),
     "Trim": ("#f2e8d8", 0.8), "Planter": ("#6b5a4a", 0.9),
 }
 HOOK_COLORS = {"CourtSurface": "#c7ac81", "BigScreen": "#101018", "NamingSign": "#101426", "GraffitiWall": "#d9d1c5", "Mural": "#cfc8bb", "Banner": "#0f1326"}
@@ -305,6 +307,10 @@ def fence():
             cyl("Metal", (px, 0, pz), 0.17, h + 0.3, segs=8)
         beam("Metal", (x0, h, z0), (x1, h, z1), 0.16)
         beam("Metal", (x0, 0.4, z0), (x1, 0.4, z1), 0.1)
+        beam("Metal", (x0, h*.53, z0), (x1, h*.53, z1), .12)
+        for u in [0,1]:
+            px,pz=x0+(x1-x0)*u,z0+(z1-z0)*u
+            beam("Metal",(px,0,pz),(px+(x1-x0)/n,h*.53,pz+(z1-z0)/n),.095)
         # Chain-link panel: world UVs in feet so the app can tile a wire texture.
         horizontal = abs(z1 - z0) < 1e-6
         cx, cz = (x0 + x1) / 2, (z0 + z1) / 2
@@ -363,12 +369,23 @@ def building(x0, x1, z0, z1, height, facade, water_tower=None, fire_escape=None,
     if cornice:
         box("Cornice", (cx, height - 0.7, cz), (w + 1.4, 1.4, d + 1.4))
         box("Cornice", (cx, 12.5, cz), (w + 0.6, 0.8, d + 0.6))
-    # Deep double-hung sash windows, projecting stone sills and lintels.
-    floors=max(1,int((height-11)/9.4))
+    # Each building has a distinct architectural rhythm and silhouette.
+    style=int(abs(x0*3+z0*7))%4
+    floor_step=[9.4,10.8,8.7,11.2][style]
+    floors=max(1,int((height-11)/floor_step))
+    if style==1:
+        for xx in [x0+.8,x1-.8]:box('Cornice',(xx,height*.5,z1+.16),(1.4,height,.45))
+        for yy in range(13,int(height),11):box('Cornice',(cx,yy,z1+.22),(w,.40,.65))
+    elif style==2:
+        box(facade,(cx,height+3,cz),(w*.58,6,d*.60))
+        box('Cornice',(cx,height+6,cz),(w*.62,.5,d*.63))
+    elif style==3:
+        for xx in [x0+1,x1-1]:box('Cornice',(xx,height/2,z1+.3),(1,height+2,.8))
+        for j in range(5):box('Cornice',(cx+(j-2)*1.3,height+1.1-abs(j-2)*.3,z1),(1.1,2.2,.9))
     for front,span,fixed,normal in [('z',w,z1,1),('z',w,z0,-1),('x',d,x1,1),('x',d,x0,-1)]:
-        count=max(2,round(span/7.6));step=span/count
+        count=max(2,round(span/[7.6,9.8,6.5,10.5][style]));step=span/count
         for floor in range(floors):
-            y=15.7+floor*9.4
+            y=15.7+floor*floor_step
             if y+3.1>height-2:continue
             for bay in range(count):
                 u=(cx if front=='z' else cz)-span/2+(bay+.5)*step
@@ -376,13 +393,25 @@ def building(x0, x1, z0, z1, height, facade, water_tower=None, fire_escape=None,
                     center=(u+du,yy,fixed+normal*projection) if front=='z' else (fixed+normal*projection,yy,u+du)
                     size=(ww,hh,dd) if front=='z' else (dd,hh,ww)
                     box(material,center,size)
-                ww=min(3.8,step*.56)
+                ww=min([3.8,5.7,3.2,5.2][style],step*.65)
                 rect('WindowFrame',0,y,.06,ww+.5,6.15,.14)
                 rect(rng.choice(['WindowGlass','WindowGlass','WindowBlue','WindowWarm']),0,y,.15,ww,5.72,.055)
                 for du in [-ww/2,ww/2]:rect('WindowFrame',du,y,.22,.10,5.9,.14)
                 rect('WindowFrame',0,y,.23,ww,.12,.14)
                 rect('Cornice',0,y+3.18,.20,ww+.8,.38,.50)
                 rect('Cornice',0,y-3.08,.32,ww+.75,.30,.75)
+                # Occupied windows facing the court, with people behind a sill/rail.
+                facing_court=(front=='z' and ((fixed<0 and normal==1) or (fixed>90 and normal==-1))) or (front=='x' and abs(fixed)<=106 and ((fixed<0 and normal==1) or (fixed>0 and normal==-1)))
+                if facing_court and floor<3 and rng.random()<.15:
+                    pos=[u,y-1.35,fixed+normal*.75] if front=='z' else [fixed+normal*.75,y-1.35,u]
+                    yaw=(0 if normal==1 else math.pi) if front=='z' else (math.pi/2 if normal==1 else -math.pi/2)
+                    NEIGHBORS.append({'position':pos,'yaw':yaw,'window':True})
+                    rect('Planter',ww*.38,y-2.7,.60,.75,.55,.65)
+                    rect('Foliage',ww*.38,y-2.3,.60,1,.5,.8)
+                if style==1 and floor==0:
+                    rect('Metal',0,y-2.75,1.0,ww+1.7,.18,2)
+                    rect('Metal',0,y-.8,1.9,ww+1.7,.10,.10)
+                    for du in [-ww*.6,0,ww*.6]:rect('Metal',du,y-1.8,1.9,.08,2,.08)
                 # Random lowered blinds and external air conditioners break the tiled rhythm.
                 if rng.random()<.28:rect('Trim',0,y+1.7,.19,ww-.17,1.8,.04)
                 if floor<4 and rng.random()<.16:
@@ -432,23 +461,56 @@ def building(x0, x1, z0, z1, height, facade, water_tower=None, fire_escape=None,
 def city():
     # Dense contiguous Harlem-style street blocks, across narrow streets from the park.
     # This is an art-directed neighborhood, rather than a surveyed reconstruction.
-    for i in range(11):
-        print("NORTH BLOCK",i,flush=True)
-        x=-166+i*30
-        h=[57,66,52,73,61,67,55,72,60,65,54][i]
-        facade=['FacadeRed','FacadeTan','FacadeGray'][i%3]
-        building(x,x+29.7,-132,-91,h,facade,water_tower=(x+18,-113) if i%3==0 else None,fire_escape=(x+14,-90.8,'+z'))
+    x=-166
+    for i,w in enumerate([25,34,22,39,27,32,24,37,29,33,30]):
+        print('NORTH BLOCK',i,flush=True)
+        h=[45,69,36,82,52,65,43,76,57,63,39][i]
+        facade=['FacadeRed','FacadeCream','FacadeBrown','FacadeGray','FacadeTan','FacadePale'][i%6]
+        building(x,x+w-.3,-132,-91,h,facade,water_tower=(x+w*.6,-113) if i%3==0 else None,fire_escape=(x+w*.5,-90.8,'+z') if i%3!=1 else None)
         # Recessed storefront glazing, shop doors, transoms and canvas awnings.
-        for xx in [x+7.5,x+22]:
+        for xx in [x+w*.25,x+w*.75]:
             box('WindowFrame',(xx,4.8,-90.8),(12.8,8.1,.30))
             box('ShopGlass',(xx,4.9,-90.58),(11.8,7.3,.10))
             for dx in [-5.9,-2,2,5.9]:box('WindowFrame',(xx+dx,4.9,-90.48),(.12,7.5,.12))
             box('Cornice',(xx,9.15,-90.3),(13.4,.35,.70))
             box('AwningGreen' if i%2 else 'AwningRed',(xx,9.9,-89.4),(12.7,.40,3.2))
             box('Cornice',(xx,11.1,-90.4),(13.2,1.4,.16))
+        x+=w
+    # South street closes the world with lower brownstones, stoops and varied roofs.
+    x=-109
+    for i,w in enumerate([22,29,19,34,24,26,21,31]):
+        h=[29,43,26,52,35,31,46,38][i]
+        building(x,x+w-.45,98,133,h,["FacadeBrown","FacadeCream","FacadeRed","FacadePale"][i%4],fire_escape=(x+w*.6,97.8,"-z") if i%3==0 else None)
+        for n in range(6):box("Stair",(x+w*.5,.22+n*.32,96.2+n*.30),(5,.44+n*.64,3.2-n*.3))
+        box("WindowFrame",(x+w*.5,5.5,97.82),(4,7,.28))
+        box("Wood",(x+w*.5,5.5,97.63),(3.5,6.5,.16))
+        box('Cornice',(x+w*.5,9.2,97.6),(5.2,.65,.8))
+        box('Chrome',(x+w*.5+1.15,5.2,97.48),(.10,.52,.10))
+        for xx in [x+w*.19,x+w*.81]:
+            box('WindowFrame',(xx,6.4,97.8),(4.5,5.8,.25))
+            box('WindowGlass',(xx,6.4,97.62),(4,5.2,.10))
+            box('Cornice',(xx,9.5,97.5),(5.1,.5,.75))
+            box('Cornice',(xx,3.5,97.45),(5.0,.38,.9))
+            for dx in [-1.9,0,1.9]:box('WindowFrame',(xx+dx,6.4,97.52),(.10,5.2,.10))
+            box('WindowFrame',(xx,6.5,97.51),(4,.12,.10))
+            if i%2:box('Planter',(xx,3.8,97.1),(3.9,.55,.85))
+        for side in [-1,1]:
+            for n in range(5):box('Metal',(x+w*.5+side*2.5,1.6+n*.26,94.7+n*.52),(.08,2.6,.08))
+            beam('Metal',(x+w*.5+side*2.5,2.9,94.7),(x+w*.5+side*2.5,4.0,97.0),.10)
+        for zz in [94.7,96.5]:beam("Metal",(x+w*.5-2.7,2.4,zz),(x+w*.5+2.7,2.4,zz),.10)
+        if i%2==0:
+            bm=sbm('Roof')
+            coords=[(x-.5,h+.5,97.5),(x+w+.5,h+.5,97.5),(x+w*.5,h+7,97.5),(x-.5,h+.5,133.5),(x+w+.5,h+.5,133.5),(x+w*.5,h+7,133.5)]
+            verts=[bm.verts.new(B(*v)) for v in coords]
+            for ids in [(0,1,2),(5,4,3),(0,2,5,3),(2,1,4,5),(3,4,1,0)]:bm.faces.new([verts[i] for i in ids])
+            _finish(bm,verts)
+            box('Cornice',(x+w*.5,h+1,97.3),(2,2,.3))
+        x+=w
+    box("Sidewalk",(0,.1,94),(230,.2,8))
+    for i in range(7):car(-89+i*29,78,["CarBody","CarRed","CarSilver"][i%3],i%3,True)
     for side in [-1,1]:
         for i in range(6):
-            z=-89+i*29.8;h=[55,63,58,69,53,62][i];fx=side*105
+            z=-89+i*29.8;h=[38,72,48,83,32,59][i];fx=side*105
             building(-141,-105,z,z+29.5,h,'FacadeTan' if i%2 else 'FacadeRed',fire_escape=(fx,z+14,'+x' if side<0 else '-x')) if side<0 else building(105,141,z,z+29.5,h,'FacadeGray' if i%2 else 'FacadeRed',fire_escape=(fx,z+14,'-x'))
             for zz in [z+7.5,z+21.5]:
                 box('ShopGlass',(fx-side*.12,4.7,zz),(.12,7.2,10.8))
@@ -641,6 +703,14 @@ def main():
     hoops()
     city()
     lights_and_trees()
+    # Sidewalk groups look through the cage, without filling every inch uniformly.
+    for side in [-1,1]:
+        for j in range(18):
+            z=-44+j*5+rng.uniform(-1,1)
+            NEIGHBORS.append({'position':[side*(60.8+rng.uniform(0,2.7)),.2,z],'yaw':-side*math.pi/2,'window':False})
+    for z,yaw in [(-54,0),(50,math.pi)]:
+        for x in [-45,-41,-22,-18,9,13,32,36,40]:NEIGHBORS.append({'position':[x,.2,z+rng.uniform(-1,1)],'yaw':yaw,'window':False})
+    json.dump(NEIGHBORS,open(os.path.join(HERE,'../src/world/neighbors.json'),'w'),indent=2)
     finish_static()
     if PREVIEW:
         preview(PREVIEW)

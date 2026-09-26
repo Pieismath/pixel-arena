@@ -75,7 +75,7 @@ A development screenshot example is `http://localhost:5190/?demo=1&highlight=1&t
 
 The court follows the sand/charcoal 2021 palette, close dark bleachers, central ochre stair, compact supported scoreboard, glass goals, tubular rims, rope nets, black fencing, mature branching trees and open Harlem streetscape. The surrounding blocks are now deliberately denser than the original reconstruction, with modeled sash windows, storefronts, fire escapes, roof services and lofted cars. This is an artistic setting, not a surveyed replica. See [reference notes](work/rucker-reference.md).
 
-Athletes use original voxel meshes, stepped hairstyles, pixel faces and sneakers on the existing 55-bone basketball rig. Palettes and procedural skin/fabric detail differentiate skin, hair, cloth and rubber. Fans use lower-detail baked meshes in instanced batches; reactions have independent timing. A subset of branded fans raises cards while others watch and clap.
+Athletes use original faceted meshes with chamfered heads, tapered limbs, continuous jerseys, stepped hairstyles, pixel faces and sneakers on the existing 55-bone basketball rig. Palettes and procedural skin/fabric detail differentiate skin, hair, cloth and rubber. Fans use baked meshes in instanced batches; reactions have independent timing. A subset of branded fans raises cards while others watch and clap.
 
 Coarse-pointer devices and devices reporting 4 GB or less memory start in low quality. Low quality uses direct rendering without ambient occlusion or bloom, capped pixel density and a cached static neighborhood shadow map. Moving players retain contact shadows. High quality adds contact shading, restrained bloom and a vignette. Unless a quality override is present, low measured frame rates can reduce quality further, lower render resolution and disable shadows. Animation pauses while the page is hidden. Reduced-motion preferences disable automatic courtside following and takeover confetti.
 
@@ -92,7 +92,7 @@ The park, characters and animations are authored in Python for Blender 5.2, then
 /Applications/Blender.app/Contents/MacOS/Blender --background --factory-startup --python blender/build_park.py -- public/models/park.glb
 ```
 
-`build_voxel_characters.py` produces `baller.glb` with Idle, Run, RunDribble, IdleDribble, Defend, Shuffle, Crossover, Pass, Catch, Shoot, Jump, Dunk, Land, Rebound and Celebrate clips, plus `fans.glb` with baked crowd poses. Region codes in vertex colors allow the browser to recolor players and each fan. Add `--preview work/character-previews` after the output directory to render character previews.
+`build_voxel_characters.py` produces `baller.glb` with Idle, Run, RunDribble, IdleDribble, Defend, Shuffle, Crossover, Pass, Catch, Shoot, Jump, Dunk, Land, Rebound and Celebrate clips, plus `fans.glb` with baked crowd poses. Region codes in vertex colors allow the browser to recolor players and each fan.
 
 `build_park.py` produces `park.glb` with the court, bleachers, fences, hoops, buildings, lights and trees. Static geometry is merged by material; sellable areas remain separate named surfaces (`CourtSurface`, `BigScreen`, `NamingSign`, `Mural_0..4`, `Banner_0..23`). Add `--preview work/park-preview.png` after the output path for a park preview. The scripts and browser share dimensions in `src/world/park-layout.json`; units are feet.
 
@@ -135,3 +135,5 @@ cp work/park-compressed.glb public/models/park.glb
 ```
 
 `node tests/brand-preview.mjs` checks seat-block boundaries, repeat edits, sponsor surfaces and preservation of original state. `node tests/ball-regression.mjs` exercises the current voxel GLB and movement code.
+
+The scene-first interface keeps inventory behind **Your brand here**. A compact spot menu leads to price, ownership terms and optional live branding. The cage is 19 feet tall; the surrounding streets now include south-side houses and varied facades on every side. `build_park.py` also generates `src/world/neighbors.json` for window residents and sidewalk spectators; these people are outside sale inventory.

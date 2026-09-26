@@ -404,10 +404,13 @@ export class GameSim implements Scoreboard {
     if (ballMode.kind === 'held' && ballMode.owner === p) {
       ballMode.gatherFrom.copy(this.ballPos); ballMode.gatherAge = 0; ballMode.gatherDuration = fade;
     }
+    const locomotion = ['Run','RunDribble','Shuffle'].includes(clip) && ['Run','RunDribble','Shuffle'].includes(p.current);
+    const stridePhase = (previous.time / previous.getClip().duration) % 1;
     const dribbling = (clip === 'RunDribble' || clip === 'IdleDribble') && (p.current === 'RunDribble' || p.current === 'IdleDribble');
     const phase = dribbling ? (previous.time / this.dribblePeriod(p.current, previous.getClip().duration)) % 1 : .5;
     next.reset().fadeIn(fade).play();
-    if (clip === 'RunDribble' || clip === 'IdleDribble') next.time = phase * this.dribblePeriod(clip, next.getClip().duration);
+    if (locomotion) next.time = stridePhase * next.getClip().duration;
+    if (!locomotion && (clip === 'RunDribble' || clip === 'IdleDribble')) next.time = phase * this.dribblePeriod(clip, next.getClip().duration);
     p.actions[p.current].fadeOut(fade);
     p.current = clip;
   }
@@ -630,7 +633,7 @@ export class GameSim implements Scoreboard {
     const dist = this.tmp.length();
     const maxSpeed = p === this.holder ? (this.phase === 'drive' ? 14 : 10.8) : 12.4;
     const desired = dist > 0.25 && p.busy <= 0 ? Math.min(maxSpeed, dist * 2.2) : p.current === 'Celebrate' ? Math.min(8, dist * 2) : 0;
-    p.speed += (desired - p.speed) * (1 - Math.exp(-dt * 8));
+    p.speed += (desired - p.speed) * (1 - Math.exp(-dt * 5));
     if (dist > 0.001 && p.speed > 0.01) {
       // Turn before sprinting: bodies no longer skate sideways through sharp cuts.
       const turn = Math.atan2(this.tmp.x,this.tmp.y)-p.heading;
@@ -646,7 +649,7 @@ export class GameSim implements Scoreboard {
         : Math.atan2(this.ballPos.x - p.pos.x, this.ballPos.z - p.pos.y);
     let delta = face - p.heading;
     delta = Math.atan2(Math.sin(delta), Math.cos(delta));
-    p.heading += THREE.MathUtils.clamp(delta, -dt * 6, dt * 6);
+    p.heading += THREE.MathUtils.clamp(delta * (1-Math.exp(-dt*10)), -dt * 5, dt * 5);
     if (p.busy <= 0) p.aim = null;
   }
 
@@ -654,8 +657,9 @@ export class GameSim implements Scoreboard {
     if (p.busy > 0) return;
     if (['Jump', 'Rebound', 'Shoot'].includes(p.current)) { this.playOnce(p, 'Land', p.actions.Land.getClip().duration); return; }
     if (p.current === 'Land' && this.cinematicHold > 0 && p === this.featured) { this.playOnce(p, 'Celebrate', 1.2); return; }
-    const moving = p.speed > 1.8;
-    const scale = THREE.MathUtils.clamp(p.speed / (9.36084 * p.depth), 0.15, 2.05);
+    const wasMoving = ['Run','RunDribble','Shuffle'].includes(p.current);
+    const moving = p.speed > (wasMoving ? .65 : 1.15);
+    const scale = THREE.MathUtils.clamp(p.speed / (6.34121 * p.depth), 0.15, 2.05);
     if (p === this.holder && this.phase !== 'fetch' && this.phase !== 'inbound') this.play(p, moving ? 'RunDribble' : 'IdleDribble', 0.2, moving ? scale : 1);
     else if (moving) {
       const lateral = (p.target.x - p.pos.x) * Math.cos(p.heading) - (p.target.y - p.pos.y) * Math.sin(p.heading);

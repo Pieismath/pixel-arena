@@ -96,7 +96,7 @@ async function main() {
   const homeView = () =>
     isPortrait()
       ? { camera: new THREE.Vector3(66, 70, 84), target: new THREE.Vector3(0, 2, -4) }
-      : { camera: new THREE.Vector3(46, 42, 68), target: new THREE.Vector3(0, 3, -4) };
+      : { camera: new THREE.Vector3(40, 52, 70), target: new THREE.Vector3(0, 3, -4) };
   function fitCamera() {
     camera.fov = isPortrait() ? 60 : 45;
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -270,8 +270,8 @@ async function main() {
     wantTarget.y = dunk ? 8 : Math.max(4, subject.y);
     wantPos.set(
       THREE.MathUtils.clamp(subject.x + dir * (dunk ? -8 : game.cinematicMode === 'drive' ? -5 : 11) * distance, -54, 54),
-      dunk ? 11 : 9,
-      subject.z + (dunk ? 23 : 18) * distance,
+      dunk ? 11 : 12,
+      subject.z + (dunk ? 23 : 22) * distance,
     );
   }
 
@@ -492,6 +492,9 @@ async function main() {
     const key = e.key.toLowerCase();
     if (key === 't') toggleTrailer();
     else if (key === 'escape') {
+      document.body.classList.remove('show-spots');
+      document.getElementById('btn-spots')!.setAttribute('aria-expanded','false');
+      document.querySelector('.more-menu')?.removeAttribute('open');
       if (trailer) toggleTrailer();
       else {
         ui.hidePanels();

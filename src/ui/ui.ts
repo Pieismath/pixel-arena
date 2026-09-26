@@ -99,25 +99,22 @@ export function createUI(handlers: UIHandlers) {
       </div>`;
   }
 
-  const stats = (h: Holding, label: string) =>
-    `<dl class="stats"><div><dt>${state.demo ? 'Demo spot value' : 'Last sold for'}</dt><dd>${usd(h.valueCents)}</dd></div><div><dt>${state.demo ? `Demo: ${label.toLowerCase()}` : label}</dt><dd>${h.takeovers}×</dd></div></dl>`;
-
   function takeoverBlock(h: Holding, noun: string, verbOpen: string) {
     const brand = brandOf(h.brandId);
     if (brand) {
-      return `${brandBlock(brand)}${stats(h, 'Taken over')}
-        <p>Anyone can take this ${noun} by paying 1.25× what it last sold for.</p>
+      return `${brandBlock(brand)}
+        <details class="spot-terms"><summary>How ownership works</summary><p>A new sponsor can take over at 1.25× the last price.</p></details>
         <button class="cta" data-checkout>Take this ${noun} · ${usd(takeoverPrice(h.valueCents))}</button>`;
     }
     return `<p class="big">Available</p>
-      <p>${verbOpen} Once it's yours, anyone can take it by paying 1.25× your price.</p>
+      <details class="spot-terms"><summary>How ownership works</summary><p>${verbOpen} A new sponsor can take over at 1.25× the last price.</p></details>
       <button class="cta" data-checkout>Claim this ${noun} · ${usd(h.valueCents)}</button>`;
   }
 
   function spotHtml(ref: SpotRef): string {
     if (ref.kind === 'seat') {
       const sale = seatSales.get(seatKey(ref.section, ref.row, ref.col));
-      const where = `${SECTIONS[ref.section].name} bleachers · Row ${ref.row + 1} · Seat ${ref.col + 1}`;
+      const where = `${SECTIONS[ref.section].name} · ${ref.row + 1}/${ref.col + 1}`;
       const brand = sale ? brandOf(sale.brandId) : null;
       return `
         <div class="badge">Seat</div>
@@ -125,11 +122,11 @@ export function createUI(handlers: UIHandlers) {
         ${
           brand
             ? `${brandBlock(brand)}
-               <p class="muted">Seats are kept for good. The fan here wears ${esc(brand.name)}'s colors and holds up its card.</p>
+               <p>Your colors. Your fan. A permanent seat.</p>
                <button class="cta" data-checkout>Claim an empty seat · ${usd(PRICES.seatCents)}</button>`
             : `<p class="big">Available</p>
-               <p>Put a fan in your colors in the bleachers, holding up your card, for as long as the court exists.</p>
-               <p class="muted">Buy a block of seats and the cards spell out your logo, like a stadium card stunt.</p>
+               <p>A fan in your colors, holding your brand.</p>
+
                <button class="cta" data-checkout>Claim this seat · ${usd(PRICES.seatCents)}</button>`
         }`;
     }
@@ -151,8 +148,7 @@ export function createUI(handlers: UIHandlers) {
         <div class="badge">Big screen</div>
         <h2 id="panel-title">${brand ? 'On the big screen today' : 'Open today'}</h2>
         ${brand ? brandBlock(brand) : ''}
-        <p>The courtside scoreboard shows a compact sponsor card between score updates. Rented by the day.</p>
-        <p class="muted">Launching something new? Put your launch day up in lights.</p>
+        <p>Your brand on the scoreboard. Book by the day.</p>
         <button class="cta" data-checkout>Pick a day · ${usd(state.screen.dayPriceCents)}/day</button>`;
     }
     const brand = brandOf(state.naming.brandId);
@@ -161,25 +157,24 @@ export function createUI(handlers: UIHandlers) {
       <div class="badge">Court name</div>
       <h2 id="panel-title">${brand ? `The ${esc(brand.name)} Court` : 'The ______ Court'}</h2>
       ${brand ? brandBlock(brand) : ''}
-      <p>One featured sponsor spot: center court, sideline lettering, and the scoreboard header. Rucker Park remains the location of this fictional game.</p>
+      <p>Center court, sidelines, and scoreboard.</p>
       ${
         brand
-          ? `${stats(h, 'Renamed')}<button class="cta" data-checkout>Rename the court · ${usd(takeoverPrice(h.valueCents))}</button>`
+          ? `<button class="cta" data-checkout>Rename the court · ${usd(takeoverPrice(h.valueCents))}</button>`
           : `<button class="cta" data-checkout>Name the court · ${usd(h.valueCents)}</button>`
       }
-      <p class="muted">Anyone can take the name by paying 1.25× the last price.</p>
+      <details class="spot-terms"><summary>How ownership works</summary><p>A new sponsor can take over at 1.25× the last price.</p></details>
       ${handlers.previewTakeover ? '<button class="share-button" data-takeover-preview type="button">Preview a court takeover <span aria-hidden="true">↗</span></button><p class="preview-footnote">A temporary fictional demo. No purchase or ownership change.</p>' : ''}`;
   }
 
   function brandStudio(ref: SpotRef) {
-    return `<details class="brand-studio" open><summary>See your brand here</summary>
-      <p>Try your name and colors on the live court.</p>
+    return `<details class="brand-studio"><summary>Try your branding</summary>
       <form id="brand-preview-form">
         <label>Business name<input name="name" required maxlength="28" value="${esc(draft.name)}" autocomplete="organization"></label>
         <label>Tagline<input name="tagline" maxlength="60" value="${esc(draft.tagline)}"></label>
         <div class="brand-colors"><label>Brand color<input name="color" type="color" value="${esc(draft.color)}"></label><label>Lettering<input name="accent" type="color" value="${esc(draft.accent)}"></label></div>
-        ${ref.kind === 'seat' ? '<label>Crowd block<select name="seats"><option value="1">1 seat · $5 preview price</option><option value="4"'+(draftSeats===4?' selected':'')+'>4 seats · $20 preview price</option><option value="12"'+(draftSeats===12?' selected':'')+'>12 seats · $60 preview price</option></select></label>' : ''}
-        <button class="cta preview-brand-cta" type="submit">Preview my brand ↗</button>
+        ${ref.kind === 'seat' ? '<label>Crowd block<select name="seats"><option value="1">1 seat · $5</option><option value="4"'+(draftSeats===4?' selected':'')+'>4 seats · $20</option><option value="12"'+(draftSeats===12?' selected':'')+'>12 seats · $60</option></select></label>' : ''}
+        <button class="cta preview-brand-cta" type="submit">Apply preview ↗</button>
       </form><small>Local mock-up. No purchase or reservation.</small></details>`;
   }
 
@@ -197,6 +192,9 @@ export function createUI(handlers: UIHandlers) {
 
   function showSpot(ref: SpotRef) {
     selected = ref;
+    document.body.classList.remove('show-spots');
+    document.getElementById('btn-spots')!.setAttribute('aria-expanded','false');
+    document.querySelector<HTMLDetailsElement>('.more-menu')?.removeAttribute('open');
     leaders.hidden = true;
     leadersBtn.setAttribute('aria-expanded', 'false');
     panelBody.innerHTML = `${spotHtml(ref)}

@@ -11,7 +11,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Inter:wght@400;500;600;700;800;900&family=Permanent+Marker&display=swap" rel="stylesheet" />
   </head>
-  <body class="show-spots">
+  <body>
     <canvas id="scene" tabindex="0" aria-label="Interactive 3D street basketball court. Drag to orbit, pinch or scroll to zoom. Use the view and spot buttons to explore."></canvas>
 
     <div id="loading" class="loading" role="status">
@@ -24,7 +24,7 @@
     <div id="ui">
       <header class="hud-top">
         <div class="title-block">
-          <div class="wordmark"><span class="court-mark" aria-hidden="true">+</span> HARLEM, NEW YORK <span class="preview-label">VOXEL STREETBALL</span></div>
+          <div class="wordmark"><span class="court-mark" aria-hidden="true">+</span> HARLEM · NYC</div>
           <h1 id="court-title">RUCKER PARK</h1>
           <p class="business-promise">Your business. In the game.</p>
           <button id="naming-line" class="naming-line" type="button">Naming rights available ↗</button>
@@ -35,11 +35,14 @@
             <span id="chip-seats" class="chip"></span>
           </div>
           <div class="toolbar">
+            <details class="more-menu"><summary aria-label="More court options">•••</summary><div class="more-menu-items">
             <button id="btn-record" class="pbtn pbtn-quiet" type="button">Record 12s</button>
-            <button id="btn-spots" class="pbtn advertise-button" type="button" aria-expanded="true">Advertise here ↗</button>
+
             <button id="btn-leaders" class="pbtn pbtn-quiet" type="button" aria-controls="leaders" aria-expanded="false">Spot holders</button>
             <button id="btn-demo" class="pbtn pbtn-quiet" type="button" aria-pressed="true" title="Switch between fictional demo brands and the empty preview court">Demo: on</button>
             <button id="btn-trailer" class="pbtn trailer-button" type="button" title="Play a cinematic camera sequence (T)"><span aria-hidden="true">▷</span> Trailer</button>
+            </div></details>
+            <button id="btn-spots" class="pbtn advertise-button" type="button" aria-expanded="false">Your brand here ↗</button>
           </div>
         </div>
       </header>
@@ -72,19 +75,19 @@
       </aside>
 
       <div class="spot-dock">
-        <div class="dock-caption"><span>PUT YOUR BRAND IN PLAY</span><span class="interaction-hint">Drag to explore · Scroll to get closer</span></div>
+        <div class="dock-caption"><span>Choose a spot</span><span class="interaction-hint">Drag to explore · Scroll to get closer</span></div>
         <nav class="tiers" aria-label="Explore brand spots and preview prices">
           <button class="tier" data-kind="seat" type="button">
-            <span class="tier-index">01</span><span class="tier-name">Crowd seats</span><span class="tier-price">$5</span><span class="tier-desc">Your fans. Your colors.</span><span class="tier-arrow" aria-hidden="true">↗</span>
+            <span class="tier-index">01</span><span class="tier-name">Seats</span><span class="tier-price">$5</span><span class="tier-desc">Your fans. Your colors.</span><span class="tier-arrow" aria-hidden="true">↗</span>
           </button>
           <button class="tier" data-kind="banner" type="button">
-            <span class="tier-index">02</span><span class="tier-name">A banner</span><span class="tier-price"><small>from</small> $25</span><span class="tier-desc">Front row visibility.</span><span class="tier-arrow" aria-hidden="true">↗</span>
+            <span class="tier-index">02</span><span class="tier-name">Banners</span><span class="tier-price"><small>from</small> $25</span><span class="tier-desc">Front row visibility.</span><span class="tier-arrow" aria-hidden="true">↗</span>
           </button>
           <button class="tier" data-kind="mural" type="button">
-            <span class="tier-index">03</span><span class="tier-name">A mural</span><span class="tier-price"><small>from</small> $50</span><span class="tier-desc">Leave it on the wall.</span><span class="tier-arrow" aria-hidden="true">↗</span>
+            <span class="tier-index">03</span><span class="tier-name">Murals</span><span class="tier-price"><small>from</small> $50</span><span class="tier-desc">Leave it on the wall.</span><span class="tier-arrow" aria-hidden="true">↗</span>
           </button>
           <button class="tier" data-kind="screen" type="button">
-            <span class="tier-index">04</span><span class="tier-name">The screen</span><span id="tier-screen-price" class="tier-price">$29/day</span><span class="tier-desc">Make today yours.</span><span class="tier-arrow" aria-hidden="true">↗</span>
+            <span class="tier-index">04</span><span class="tier-name">Screen</span><span id="tier-screen-price" class="tier-price">$29/day</span><span class="tier-desc">Make today yours.</span><span class="tier-arrow" aria-hidden="true">↗</span>
           </button>
           <button class="tier tier-hot" data-kind="naming" type="button">
             <span class="tier-index">05</span><span class="tier-name">Court sponsor</span><span id="tier-naming-price" class="tier-price">$100</span><span class="tier-desc">Center court. Your name.</span><span class="tier-arrow" aria-hidden="true">↗</span>

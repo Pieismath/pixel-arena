@@ -1,38 +1,21 @@
 {
-  "device": "Apple M5, 16GB RAM",
-  "browser": "Codex in-app Chromium",
-  "method": "30s after 8s warmup; production renderer; all frame stalls retained; forced stable graphics tiers",
+  "environment": "Apple M5 Mac, 16GB; desktop browser; not a physical-phone measurement",
+  "scene": "Refined faceted cast, 19-foot cage, four-sided city, 138 neighborhood spectators",
   "desktop": {
     "status": "complete",
-    "seconds": 30.01,
-    "frames": 2051,
-    "fps": 68.4,
+    "seconds": 30,
+    "frames": 2006,
+    "fps": 66.9,
     "medianMs": 16.6,
-    "p95Ms": 17.3,
-    "meanDraws": 642,
-    "meanTriangles": 3061299,
+    "p95Ms": 24.7,
+    "meanDraws": 666,
+    "meanTriangles": 6964939,
     "quality": "high",
     "viewport": [
-      1440,
-      900
+      896,
+      779
     ],
-    "pixelRatio": 1
+    "pixelRatio": 1.5
   },
-  "mobileViewportOnSameMac": {
-    "status": "complete",
-    "seconds": 30,
-    "frames": 3600,
-    "fps": 120,
-    "medianMs": 8.3,
-    "p95Ms": 9.1,
-    "meanDraws": 122,
-    "meanTriangles": 984360,
-    "quality": "low",
-    "viewport": [
-      390,
-      844
-    ],
-    "pixelRatio": 1
-  },
-  "limitations": "Viewport emulation, not physical mobile hardware. Earlier samples under concurrent system graphics load were substantially slower. No sustained performance guarantee."
+  "note": "Measured before final south-side door and ground-floor window trim; frame sample is not a guarantee on other devices."
 }
