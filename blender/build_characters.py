@@ -1,7 +1,7 @@
 """Builds the big-head cartoon characters in Blender and exports them as glTF.
 
   baller.glb  one rigged player (body, face, sneakers, jersey number plates, four hair styles)
-              with animations: Idle, Run, RunDribble, IdleDribble, Defend, Shoot, Pass, Celebrate
+              with animations: Idle, Run, RunDribble, IdleDribble, Defend, Shoot, Pass, Celebrate, Dunk
   fans.glb    static crowd meshes in several poses; colors are region codes (skin/shirt/pants/...)
               in the vertex colors so the web app can recolor every fan per instance
 
@@ -19,6 +19,7 @@ import sys
 import bmesh
 import bpy
 from mathutils import Matrix, Quaternion, Vector
+from mathutils.bvhtree import BVHTree
 
 ARGS = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -56,17 +57,17 @@ J = {
 
 RADIUS = {
     "pelvis": (0.64, 0.46),
-    "waist": (0.6, 0.42),
-    "chest": (0.9, 0.54),
+    "waist": (0.56, 0.40),
+    "chest": (1.01, 0.53),
     "neck": (0.3, 0.3),
     "head_base": (0.3, 0.3),
-    "shoulder": (0.36, 0.36),
+    "shoulder": (0.40, 0.37),
     "elbow": (0.25, 0.25),
-    "wrist": (0.21, 0.18),
-    "palm": (0.38, 0.22),
-    "fingertip": (0.29, 0.18),
-    "hip": (0.42, 0.42),
-    "knee": (0.29, 0.29),
+    "wrist": (0.18, 0.17),
+    "palm": (0.32, 0.21),
+    "fingertip": (0.25, 0.16),
+    "hip": (0.43, 0.43),
+    "knee": (0.27, 0.27),
     "ankle": (0.21, 0.21),
 }
 
@@ -120,8 +121,8 @@ for _b, _h, _t, _p in BONES:
     CHILDREN.setdefault(_p, []).append(_b)
 SEGMENTS = [(b, J[h], J[t]) for b, h, t, _p in BONES]
 
-HEAD_CENTER = Vector((0, 0.0, 5.55))
-HEAD_RADII = (0.86, 0.8, 0.9)
+HEAD_CENTER = Vector((0, 0.0, 5.57))
+HEAD_RADII = (0.76, 0.7, 0.83)
 
 
 def at_head(dx, dy, dz):
@@ -356,26 +357,66 @@ def fan_region(bone, c):
     return "Skin"
 
 
+def add_cranium(bm, mat, low_poly=False):
+    """An authored ring silhouette: broad temples, cheek planes, square tapered jaw."""
+    count = 12 if low_poly else 24
+    levels = [(-0.79, .34, .39), (-.67, .53, .53), (-.39, .68, .65),
+              (-.08, .76, .70), (.24, .75, .68), (.53, .64, .59), (.73, .40, .40)]
+    rings = []
+    for z, rx, ry in levels:
+        ring = []
+        for i in range(count):
+            a = 2 * math.pi * i / count
+            # A mildly squared cross section keeps the face from reading as a balloon.
+            x = math.copysign(abs(math.cos(a)) ** .87, math.cos(a)) * rx
+            y = math.copysign(abs(math.sin(a)) ** .91, math.sin(a)) * ry
+            ring.append(bm.verts.new(HEAD_CENTER + Vector((x, y, z))))
+        rings.append(ring)
+    for lower, upper in zip(rings, rings[1:]):
+        for i in range(count):
+            f = bm.faces.new((lower[i], lower[(i + 1) % count], upper[(i + 1) % count], upper[i]))
+            f.material_index = mat
+            f.smooth = True
+    for ring, flip in ((rings[0], True), (rings[-1], False)):
+        f = bm.faces.new(list(reversed(ring)) if flip else ring)
+        f.material_index = mat
+        f.smooth = True
+    return [v for ring in rings for v in ring]
+
+
 def add_head(bm, mats, low_poly=False):
-    seg = (10, 7) if low_poly else (28, 18)
-    small = (6, 4) if low_poly else (16, 10)
-    add_ellipsoid(bm, HEAD_CENTER, HEAD_RADII, mats["Skin"], seg)
+    small = (6, 4) if low_poly else (14, 8)
+    add_cranium(bm, mats["Skin"], low_poly)
     for sx in (1, -1):
-        add_ellipsoid(bm, at_head(sx * 0.85, 0.03, -0.03), (0.11, 0.13, 0.2), mats["Skin"], small)  # ears
-        add_ellipsoid(bm, at_head(sx * 0.28, -0.7, 0.14), (0.17, 0.1, 0.21), mats["EyeWhite"], small)  # eyes
-        add_ellipsoid(bm, at_head(sx * 0.27, -0.79, 0.12), (0.09, 0.05, 0.11), mats["Dark"], small)  # pupils
-        brow_rot = Quaternion((0, 1, 0), math.radians(-14 * sx))
-        add_box(bm, at_head(sx * 0.29, -0.68, 0.42), (0.32, 0.08, 0.085), mats["Hair"], rot=brow_rot, bevel=0.0 if low_poly else 0.02)
-    add_ellipsoid(bm, at_head(0, -0.84, -0.06), (0.14, 0.11, 0.13), mats["Skin"], small)  # nose
-    # A little smile: the lower arc of a torus, facing forward.
-    smile_rot = Quaternion((1, 0, 0), math.radians(90))
-    add_torus(bm, at_head(0, -0.735, -0.36), 0.18, 0.035, mats["Dark"], segs=5 if low_poly else 10, sides=4 if low_poly else 6, arc=(math.radians(200), math.radians(340)), rot=smile_rot, closed=False)
+        add_ellipsoid(bm, at_head(sx * .755, .01, -.04), (.12, .14, .19), mats["Skin"], small)
+        if not low_poly:
+            add_ellipsoid(bm, at_head(sx * .79, -.107, -.025), (.046, .024, .071), mats["Skin"], small)
+        # Narrow lids and strong brows give an intent expression at court scale.
+        add_ellipsoid(bm, at_head(sx * .27, -.667, .13), (.166, .052, .076), mats["EyeWhite"], small)
+        add_ellipsoid(bm, at_head(sx * .265, -.725, .132), (.059, .024, .060), mats["Dark"], small)
+        brow_rot = Quaternion((0, 1, 0), math.radians(-12 * sx))
+        add_box(bm, at_head(sx * .275, -.672, .292), (.355, .13, .11), mats["Hair"], rot=brow_rot, bevel=.0 if low_poly else .025)
+        if not low_poly:
+            # Cheek ridge with a soft planar transition, not a separate round cheek.
+            add_ellipsoid(bm, at_head(sx * .42, -.601, -.13), (.20, .035, .08), mats["Skin"], (10, 6))
+    # Wedge nose: a readable bridge and broad base with a deliberate highlight plane.
+    points = [(-.105, -.65, .27), (.105, -.65, .27), (-.16, -.66, -.16),
+              (.16, -.66, -.16), (-.11, -.865, -.12), (.11, -.865, -.12), (0, -.80, .19)]
+    nv = [bm.verts.new(HEAD_CENTER + Vector(v)) for v in points]
+    for ids in [(0, 6, 4, 2), (6, 1, 3, 5), (4, 6, 5), (2, 4, 5, 3)]:
+        f = bm.faces.new([nv[i] for i in ids]); f.material_index = mats["Skin"]; f.smooth = False
+    # A small asymmetric grin is more athletic than the original toy-like smile.
+    add_box(bm, at_head(0, -.641, -.405), (.38, .047, .10), mats["Dark"], bevel=0 if low_poly else .025)
+    if not low_poly:
+        add_box(bm, at_head(.015, -.668, -.385), (.285, .016, .037), mats["EyeWhite"], bevel=.008)
+        add_ellipsoid(bm, at_head(0, -.54, -.58), (.29, .04, .08), mats["Skin"], (12, 6))
 
 
 def head_shell(bm, scale, keep, mat, segs=(28, 18)):
     """A copy of the head surface, pushed out a bit, keeping only the faces `keep` accepts."""
-    radii = tuple(r * scale for r in HEAD_RADII)
-    verts = add_ellipsoid(bm, HEAD_CENTER, radii, mat, segs)
+    verts = add_cranium(bm, mat, low_poly=segs[0] <= 12)
+    for v in verts:
+        v.co = HEAD_CENTER + (v.co - HEAD_CENTER) * scale
     doomed = [f for f in faces_of(verts) if not keep(f.calc_center_median() - HEAD_CENTER)]
     bmesh.ops.delete(bm, geom=doomed, context="FACES")
     # Give the shell some thickness so its open edge doesn't look paper-thin.
@@ -384,7 +425,17 @@ def head_shell(bm, scale, keep, mat, segs=(28, 18)):
         bmesh.ops.solidify(bm, geom=remaining, thickness=0.04)
 
 
+def add_twists(bm, mat, low=False):
+    head_shell(bm, 1.025, lambda d: d.z > .4 or (d.y > -.22 and d.z > .05), mat, (12,8) if low else (24,14))
+    for ix, x in enumerate((-.43, 0, .43)):
+        for iy, y in enumerate((-.34, .05, .40)):
+            z = .66 + (.12 if ix == 1 else .02) - (.07 if iy == 2 else 0)
+            add_ellipsoid(bm, at_head(x,y,z), (.17,.23,.24), mat, (8,5) if low else (12,8),
+                          rot=Quaternion((0,1,0), math.radians(-16 if ix == 0 else 16)))
+
+
 HAIR_STYLES = {
+    "Twists": add_twists,
     "Buzz": lambda bm, m, low=False: head_shell(bm, 1.035, lambda d: d.z > 0.52 or (d.y > -0.25 and d.z > 0.0), m, (12, 8) if low else (28, 18)),
     "Afro": lambda bm, m, low=False: add_ellipsoid(bm, at_head(0, 0.14, 0.5), (1.02, 0.98, 0.8), m, (10, 7) if low else (24, 14)),
     "Beard": lambda bm, m, low=False: head_shell(bm, 1.045, lambda d: d.z < -0.12 and d.y < 0.35 and not (abs(d.x) < 0.22 and -0.46 < d.z < -0.24 and d.y < -0.5), m, (12, 8) if low else (28, 18)),
@@ -402,11 +453,60 @@ def add_shoes(bm, mats, low_poly=False):
         add_ellipsoid(bm, (x, -0.22, 0.36), (0.32, 0.62, 0.31), mats["Shoe"], (20, 12))  # upper
         add_ellipsoid(bm, (x, -0.02, 0.62), (0.27, 0.3, 0.25), mats["Shoe"], (16, 8))  # high-top collar
         add_ellipsoid(bm, (x, -0.7, 0.2), (0.26, 0.14, 0.12), mats["Sole"], (12, 6))  # rubber toe cap
+        add_box(bm, (x, -.22, .105), (.62, 1.14, .075), mats["Dark"], bevel=.025)
+        add_box(bm, (x, -.18, .57), (.31, .46, .045), mats["Trim"], bevel=.03)
+        for y in (-.05, -.16, -.27, -.38):
+            add_box(bm, (x, y, .598 - max(0, -y-.16)*.38), (.32, .032, .035), mats["Sole"], bevel=.012)
+        for side in (-1, 1):
+            add_box(bm, (x + side * .293, -.18, .35), (.035, .41, .095), mats["Trim"], rot=Quaternion((1,0,0), math.radians(-22)), bevel=.025)
+        add_box(bm, (x, .21, .62), (.18, .075, .27), mats["Trim"], bevel=.025)
 
 
 def add_thumbs(bm, mats):
     for sx in (1, -1):
         add_ellipsoid(bm, (sx * 1.25, -0.24, 2.38), (0.12, 0.12, 0.17), mats["Skin"], (10, 6), rot=Quaternion((0, 1, 0), math.radians(20 * sx)))
+
+
+def add_kit_detail(bm, mats):
+    """Sewn ribbons are projected onto the body, so they follow cloth instead of floating."""
+    body_tree = BVHTree.FromBMesh(bm)
+
+    def front_ribbon(points, width, mat):
+        rings = []
+        for i, (x, z) in enumerate(points):
+            tangent = Vector(points[min(len(points)-1, i+1)]) - Vector(points[max(0, i-1)])
+            across = Vector((tangent.y, -tangent.x)).normalized() * (width/2)
+            edge = []
+            for sign in (-1, 1):
+                xx, zz = x + sign*across.x, z + sign*across.y
+                hit, normal, _, _ = body_tree.ray_cast(Vector((xx, -2, zz)), Vector((0, 1, 0)))
+                if hit is None:
+                    return
+                edge.append(bm.verts.new(hit + normal * .018))
+            rings.append(edge)
+        for l, r in zip(rings, rings[1:]):
+            f = bm.faces.new((l[0], l[1], r[1], r[0])); f.material_index = mat; f.smooth = True
+
+    for side in (-1, 1):
+        # Neck and long contrast seam down the side of the original jersey.
+        front_ribbon([(side*(.05 + t*.30), 3.99+t*.27) for t in (0,.2,.4,.6,.8,1)], .065, mats["Trim"])
+        front_ribbon([(side*(.45+t*.16), 3.17+t*.83) for t in (0,.2,.4,.6,.8,1)], .063, mats["Trim"])
+        # Shorts hem follows the round leg surface instead of sitting in front of it.
+        front_ribbon([(side*(.23+t*.54), 1.99) for t in (0,.2,.4,.6,.8,1)], .04, mats["Trim"])
+        # Cloth side panel: project its edges inward from the outer leg.
+        rings = []
+        for z in (2.03, 2.18, 2.34, 2.50, 2.66):
+            ring = []
+            for y in (-.17, .07):
+                hit, normal, _, _ = body_tree.ray_cast(Vector((side*.98, y, z)), Vector((-side, 0, 0)))
+                if hit is not None:
+                    ring.append(bm.verts.new(hit+normal*.022))
+            if len(ring) == 2: rings.append(ring)
+        for lower, upper in zip(rings,rings[1:]):
+            vertices = (lower[0], lower[1], upper[1], upper[0])
+            f = bm.faces.new(vertices if side > 0 else tuple(reversed(vertices))); f.material_index=mats["Trim"]; f.smooth=True
+    add_ellipsoid(bm, (1.30, .015, 2.78), (.225, .21, .17), mats["Trim"], (12, 6))
+    add_ellipsoid(bm, (-.5, -.04, 1.20), (.28, .285, .30), mats["Dark"], (12, 8))
 
 
 def weight_mesh(obj, rigid=None):
@@ -447,6 +547,8 @@ def assemble(name, body_mesh, region_of, materials, low_poly=False, hair=None):
     mats = {n: i for i, n in enumerate(materials)}
     bm = bmesh.new()
     bm.from_mesh(body_mesh)
+    if not low_poly:
+        add_kit_detail(bm, mats)
     add_head(bm, mats, low_poly)
     add_shoes(bm, mats, low_poly)
     if not low_poly:
@@ -645,6 +747,27 @@ def build_actions(rig):
     up_b = {**both("upper_arm", -172, -12, 0), **both("forearm", -64, 0, 0), "head": (-22, 0, 0), "spine": (-8, 0, 0)}
     make_action(rig, "Celebrate", [(0, up_a, (0, 0, 0.3)), (6, up_b, (0, 0, 0.0)), (12, up_a, (0, 0, 0.3)), (18, up_b, (0, 0, 0.0)), (24, up_a, (0, 0, 0.3))])
 
+    # One-handed tomahawk: gather, asymmetric takeoff, extended reach, follow-through, landing.
+    dunk_gather = {**STANCE, "spine": (17, 0, -12), "head": (-18, 0, 8),
+                   "upper_arm.R": (-78, 8, 0), "forearm.R": (-86, 0, 0),
+                   "upper_arm.L": (-35, -42, 0), "forearm.L": (-40, 0, 0)}
+    dunk_air = {"thigh.L": (-65, 0, 0), "shin.L": (92, 0, 0), "foot.L": (-15, 0, 0),
+                "thigh.R": (14, 0, 0), "shin.R": (65, 0, 0), "foot.R": (20, 0, 0),
+                "spine": (-10, 0, -16), "chest": (-8, 0, 15), "head": (8, 0, 0),
+                "upper_arm.R": (-171, 8, 0), "forearm.R": (-8, 0, 0), "hand.R": (-7, 0, 0),
+                "upper_arm.L": (-66, -65, 0), "forearm.L": (-20, 0, 0)}
+    dunk_finish = {**dunk_air, "spine": (9, 0, -8), "upper_arm.R": (-145, 0, 0),
+                   "forearm.R": (-8, 0, 0), "hand.R": (-55, 0, 0), "thigh.L": (-25, 0, 0), "shin.L": (48, 0, 0)}
+    make_action(rig, "Dunk", [
+        (0, dunk_gather, (0, 0, -.30)),
+        (5, {**dunk_gather, **both("thigh", -42, 0, 0), **both("shin", 68, 0, 0)}, (0, 0, -.50)),
+        (12, dunk_air, (0, 0, 3.30)),
+        (17, dunk_air, (0, 0, 3.70)),
+        (21, dunk_finish, (0, 0, 3.32)),
+        (28, {**STANCE, **both("upper_arm", -10, -25, 0), **both("forearm", -35, 0, 0)}, (0, 0, -.43)),
+        (36, idle_a, (0, 0, 0)),
+    ])
+
     rig.animation_data.action = bpy.data.actions["Idle"]
 
 
@@ -725,7 +848,7 @@ def build_baller():
         ("Skin", "#b87a56"), ("Jersey", "#e2462f"), ("Trim", "#fff3e0"), ("Shorts", "#e2462f"), ("Socks", "#f5f2ea"),
         ("Shoe", "#1c1f2b"), ("Sole", "#f5f2ea"), ("EyeWhite", "#fbfbf6"), ("Dark", "#1a1214"), ("Hair", "#1b1412"),
     ]]
-    body_mesh = build_body_mesh(2, player_region, PLAYER_MATS)
+    body_mesh = build_body_mesh(1, player_region, PLAYER_MATS)
     me = assemble("Body", body_mesh, player_region, PLAYER_MATS)
     for m in mats:
         me.materials.append(m)
@@ -735,7 +858,7 @@ def build_baller():
 
     hair_mat = bpy.data.materials["Hair"]
     trim_mat = bpy.data.materials["Trim"]
-    for style in ("Buzz", "Afro", "Beard"):
+    for style in ("Buzz", "Afro", "Beard", "Twists"):
         bm = bmesh.new()
         HAIR_STYLES[style](bm, 0)
         hm = bpy.data.meshes.new(f"Hair{style}")
@@ -875,7 +998,7 @@ def preview(path, objects_filter=None, frame=None, action=None, rig=None, camera
 
 
 def show_hair(style):
-    for name in ("HairBuzz", "HairAfro", "HairBeard", "Headband"):
+    for name in ("HairBuzz", "HairAfro", "HairBeard", "HairTwists", "Headband"):
         obj = bpy.data.objects.get(name)
         if obj:
             obj.hide_render = name != style and not (style == "Headband" and name == "HairBuzz")

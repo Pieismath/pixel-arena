@@ -8,16 +8,17 @@ import { basketballTexture } from './textures';
 
 type TeamId = 0 | 1;
 /** fetch → inbound → advance → set ⇄ pass → shot → (fetch | loose) */
-type Phase = 'fetch' | 'inbound' | 'advance' | 'set' | 'pass' | 'shot' | 'loose';
-type Clip = 'Idle' | 'Run' | 'RunDribble' | 'IdleDribble' | 'Defend' | 'Shoot' | 'Pass' | 'Celebrate';
+type Phase = 'fetch' | 'inbound' | 'advance' | 'set' | 'pass' | 'shot' | 'drive' | 'dunk' | 'loose';
+type Clip = 'Idle' | 'Run' | 'RunDribble' | 'IdleDribble' | 'Defend' | 'Shoot' | 'Pass' | 'Celebrate' | 'Dunk';
 
 const SKINS = ['#f1c7a3', '#e0ac85', '#c68863', '#9c6644', '#6f4a33', '#b07a55'];
 const HAIR_COLORS = ['#1b1412', '#2e1f16', '#4a2f1d', '#b08a4a', '#1b1412'];
-const LOOKS: string[][] = [['HairBuzz'], ['HairAfro'], ['HairBuzz', 'Headband'], ['HairBuzz', 'HairBeard'], ['HairAfro', 'Headband'], ['HairBeard']];
+const LOOKS: string[][] = [['HairBuzz'], ['HairAfro'], ['HairTwists', 'Headband'], ['HairBuzz', 'HairBeard'], ['HairAfro', 'Headband'], ['HairTwists']];
 // Region order matches PLAYER_MATS in blender/build_characters.py.
 const REGIONS = ['Skin', 'Jersey', 'Trim', 'Shorts', 'Socks', 'Shoe', 'Sole', 'EyeWhite', 'Dark', 'Hair'] as const;
 const FPS = 24;
 const SHOOT_RELEASE = 14 / FPS;
+const DUNK_RELEASE = 18 / FPS;
 const PASS_RELEASE = 5 / FPS;
 const dirOf = (team: TeamId) => (team === 0 ? 1 : -1);
 
@@ -32,32 +33,42 @@ const SPOTS = [
 
 /** One draw call per body: every face carries a region code; the palette is per player. */
 function playerMaterial(colors: THREE.Color[]) {
-  const m = new THREE.MeshStandardMaterial({ roughness: 0.72 });
+  const m = new THREE.MeshStandardMaterial({ roughness: 0.8 });
   const uniforms = { uPalette: { value: colors } };
   m.userData.palette = uniforms;
   m.onBeforeCompile = (shader) => {
     shader.uniforms.uPalette = uniforms.uPalette;
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', `#include <common>\nattribute vec4 region;\nuniform vec3 uPalette[${REGIONS.length}];\nvarying vec3 vRegionColor;`)
+      .replace('#include <common>', `#include <common>\nattribute vec4 region;\nuniform vec3 uPalette[${REGIONS.length}];\nvarying vec3 vRegionColor;\nvarying vec3 vClothPosition;\nvarying float vRegion;`)
       .replace(
         '#include <begin_vertex>',
         `#include <begin_vertex>
         int ri = int(floor(region.r * 16.0));
+        vRegion = float(ri);
+        vClothPosition = position;
         vRegionColor = uPalette[0];
         for (int i = 1; i < ${REGIONS.length}; i++) { if (i == ri) vRegionColor = uPalette[i]; }`,
       );
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vRegionColor;')
-      .replace('vec4 diffuseColor = vec4( diffuse, opacity );', 'vec4 diffuseColor = vec4( diffuse * vRegionColor, opacity );');
+      .replace('#include <common>', '#include <common>\nvarying vec3 vRegionColor;\nvarying vec3 vClothPosition;\nvarying float vRegion;')
+      .replace('vec4 diffuseColor = vec4( diffuse, opacity );', `
+        float isCloth = step(0.5, vRegion) * (1.0 - step(4.5, vRegion));
+        vec2 weaveUV = vec2(vClothPosition.x * 72.0, vClothPosition.y * 64.0 + vClothPosition.z * 77.0);
+        float visibleWeave = 1.0 - smoothstep(0.7, 2.2, max(fwidth(weaveUV.x), fwidth(weaveUV.y)));
+        float knit = sin(weaveUV.x) * sin(weaveUV.y);
+        float fabric = 1.0 + isCloth * knit * visibleWeave * 0.075;
+        vec4 diffuseColor = vec4(diffuse * vRegionColor * fabric, opacity);`)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+        roughnessFactor = vRegion < 0.5 ? 0.62 : (vRegion > 6.5 && vRegion < 8.5 ? 0.44 : 0.87);`);
   };
   return m;
 }
 
 /** Ink outline that stays about the same thickness on screen at any distance. */
 const outlineMaterial = (() => {
-  const m = new THREE.MeshBasicMaterial({ color: '#1c1024', side: THREE.BackSide });
+  const m = new THREE.MeshBasicMaterial({ color: '#352132', side: THREE.BackSide });
   m.onBeforeCompile = (shader) => {
-    shader.uniforms.outlineWidth = { value: 0.0042 };
+    shader.uniforms.outlineWidth = { value: 0.00115 };
     shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float outlineWidth;').replace(
       '#include <project_vertex>',
       `#include <project_vertex>
@@ -89,6 +100,9 @@ interface Player {
   target: THREE.Vector2;
   heading: number;
   speed: number;
+  reach: number;
+  height: number;
+  depth: number;
 }
 
 interface Flight {
@@ -120,7 +134,16 @@ export class GameSim implements Scoreboard {
   private holder: Player | null = null;
   private flight: Flight | null = null;
   private timer = 0;
-  private passesLeft = 2;
+  private passesLeft = 0;
+  private possessions = 0;
+  private highlightNext = true;
+  private cinematicHold = 0;
+  private featured: Player | null = null;
+  private dunker: Player | null = null;
+  private dunkTime = 0;
+  private readonly dunkFrom = new THREE.Vector2();
+  private readonly dunkTo = new THREE.Vector2();
+  private readonly cameraTarget = new THREE.Vector3();
   private spotOf = [0, 1, 2, 3, 4];
   private readonly ballPos = new THREE.Vector3(0, 1, 0);
   private readonly ballRest = new THREE.Vector3(0, 0.45, 0);
@@ -144,10 +167,52 @@ export class GameSim implements Scoreboard {
     this.ball.castShadow = true;
     this.group.add(this.ball);
     this.holder = this.teams[0][0];
+    this.featured = this.holder;
   }
 
   get ballPosition(): THREE.Vector3 {
     return this.ballPos;
+  }
+
+  /** Current action focus, independent of the airborne ball so close cameras stay stable. */
+  get cinematicTarget(): THREE.Vector3 {
+    const p = this.dunker ?? this.featured ?? this.holder ?? this.players[0];
+    const lift = this.dunker ? Math.max(0, Math.sin(Math.min(1, this.dunkTime / 1.2) * Math.PI)) * 2.6 : 0;
+    return this.cameraTarget.set(p.pos.x, 3.7 + lift, p.pos.y);
+  }
+
+  get cinematicMode(): 'play' | 'drive' | 'dunk' | 'celebrate' {
+    if (this.phase === 'dunk' || this.dunker) return 'dunk';
+    if (this.phase === 'drive') return 'drive';
+    return this.cinematicHold > 0 ? 'celebrate' : 'play';
+  }
+
+  get attackingDirection(): number { return dirOf((this.dunker ?? this.featured ?? this.holder)?.team ?? this.offense); }
+
+  /** A deterministic, repeatable clip for the share/highlight button. */
+  playHighlight(): void {
+    this.flight = null;
+    this.dunker = null;
+    this.cinematicHold = 0;
+    this.offense = 0;
+    this.holder = this.teams[0][2];
+    this.featured = this.holder;
+    this.holder.pos.set(RIM.x - 18, -5.5);
+    this.holder.target.copy(this.holder.pos);
+    this.holder.heading = Math.PI / 2;
+    this.holder.busy = 0;
+    this.holder.speed = 7;
+    this.players.forEach((p) => {
+      p.busy = 0;
+      if (p === this.holder) return;
+      this.spotWorld(0, p.slot, p.pos);
+      p.pos.y += p.team === 1 ? 5 : -3;
+      p.pos.x -= p.team === 1 ? 3 : 0;
+      p.target.copy(p.pos);
+    });
+    this.phase = 'drive';
+    this.highlightNext = false;
+    this.timer = 0;
   }
 
   update(dt: number, t: number) {
@@ -162,19 +227,30 @@ export class GameSim implements Scoreboard {
       }
     }
     this.timer -= dt;
+    this.cinematicHold = Math.max(0, this.cinematicHold - dt);
     this.assignTargets();
     this.think();
     for (const p of this.players) this.movePlayer(p, dt);
     this.separate();
+    if (this.dunker) {
+      this.dunkTime += dt;
+      // The approach travels under the ball hand; all vertical movement is authored in the rig.
+      const travel = THREE.MathUtils.smoothstep(this.dunkTime, 0.12, DUNK_RELEASE);
+      this.dunker.pos.lerpVectors(this.dunkFrom, this.dunkTo, travel);
+      if (this.dunkTime > 1.5) this.dunker = null;
+    }
     for (const p of this.players) {
       p.busy = Math.max(0, p.busy - dt);
       this.animate(p);
       p.mixer.update(dt);
-      p.root.position.set(p.pos.x, 0, p.pos.y);
+      const jumpWeight = this.dunker === p
+        ? THREE.MathUtils.smoothstep(this.dunkTime, 5 / FPS, 12 / FPS) * (1 - THREE.MathUtils.smoothstep(this.dunkTime, 21 / FPS, 28 / FPS)) : 0;
+      p.root.position.set(p.pos.x, (1.06 - p.height) * 9.85 * jumpWeight, p.pos.y);
       p.root.rotation.y = p.heading;
     }
     this.group.updateMatrixWorld(true);
     this.updateBall(dt, t);
+    if (this.holder && this.cinematicHold <= 0 && !this.dunker) this.featured = this.holder;
   }
 
   // --- Decisions -------------------------------------------------------------
@@ -199,6 +275,13 @@ export class GameSim implements Scoreboard {
       this.tmp.set(dir * RIM.x - man.x, -man.y).normalize();
       p.target.copy(man).addScaledVector(this.tmp, 3.4);
     }
+    if (this.phase === 'drive' && this.holder) {
+      // Keep a lane open while the off-ball players flare toward the wings.
+      this.holder.target.set(dir * (RIM.x - 4.8), -.8);
+      for (const p of offense) if (p !== this.holder) p.target.y *= 1.12;
+      const marker = defense[this.holder.slot];
+      marker.target.copy(this.holder.pos).add(new THREE.Vector2(-dir * 2.7, 3.5));
+    }
     if (this.phase === 'fetch') offense[1].target.set(this.ballRest.x, this.ballRest.z);
     else if (this.phase === 'inbound') {
       offense[1].target.set(-dir * 48.5, 3);
@@ -210,7 +293,7 @@ export class GameSim implements Scoreboard {
       }
     }
     // Anyone shooting or passing plants their feet.
-    for (const p of this.players) if (p.busy > 0 && (p.current === 'Shoot' || p.current === 'Pass')) p.target.copy(p.pos);
+    for (const p of this.players) if (p.busy > 0 && (p.current === 'Shoot' || p.current === 'Pass' || p.current === 'Dunk')) p.target.copy(p.pos);
   }
 
   private distToRest(p: Player) {
@@ -244,14 +327,19 @@ export class GameSim implements Scoreboard {
       case 'set':
         if (this.timer <= 0) {
           if (this.passesLeft > 0) this.passToTeammate();
+          else if (this.highlightNext || this.possessions % 3 !== 2) this.beginDrive();
           else this.shoot();
         }
+        break;
+      case 'drive':
+        if (this.holder && Math.hypot(this.holder.pos.x - dirOf(this.offense) * RIM.x, this.holder.pos.y) < 5.7) this.dunk();
         break;
       case 'loose':
         this.checkPickup();
         break;
       case 'pass':
       case 'shot':
+      case 'dunk':
         break;
     }
   }
@@ -314,8 +402,43 @@ export class GameSim implements Scoreboard {
     });
   }
 
+  private beginDrive() {
+    if (!this.holder) return;
+    this.phase = 'drive';
+    this.featured = this.holder;
+    this.highlightNext = false;
+    this.timer = 0;
+  }
+
+  private dunk() {
+    const p = this.holder!;
+    const dir = dirOf(this.offense);
+    this.featured = p;
+    this.dunker = p;
+    this.dunkTime = 0;
+    this.dunkFrom.copy(p.pos);
+    // Right-handed finish: offset the torso to put the extended hand over the rim.
+    this.dunkTo.set(dir * (RIM.x + .56 * p.depth), -dir * 1.02 * p.reach);
+    this.face(p, this.tmp.set(dir * (RIM.x + 2), p.pos.y));
+    p.speed = 0;
+    this.playOnce(p, 'Dunk', 1.5);
+    this.holder = null;
+    this.phase = 'dunk';
+    this.flight = {
+      from: new THREE.Vector3(),
+      to: new THREE.Vector3(dir * RIM.x, RIM.y - .25, 0),
+      t: -DUNK_RELEASE,
+      dur: .14,
+      arc: .05,
+      launched: false,
+      holder: p,
+      done: () => this.scored(2, p),
+    };
+  }
+
   private shoot() {
     const shooter = this.holder!;
+    this.featured = shooter;
     const dir = dirOf(this.offense);
     const rim = new THREE.Vector3(dir * RIM.x, RIM.y + 0.4, 0);
     const d = Math.hypot(shooter.pos.x - rim.x, shooter.pos.y);
@@ -341,7 +464,14 @@ export class GameSim implements Scoreboard {
     const team = this.offense;
     this.score[team] += points;
     this.onScore?.(team, points);
-    this.playOnce(shooter, 'Celebrate', 1.4);
+    this.possessions++;
+    this.featured = shooter;
+    this.cinematicHold = 2.8;
+    // Finish the landing before celebrating a dunk; nearby teammates react immediately.
+    if (shooter.current !== 'Dunk') this.playOnce(shooter, 'Celebrate', 1.7);
+    for (const p of this.teams[team]) {
+      if (p !== shooter && p.pos.distanceTo(shooter.pos) < 30) this.playOnce(p, 'Celebrate', 1.2 + p.slot * .12);
+    }
     const at = this.ballPos.clone();
     this.flight = {
       from: at,
@@ -354,7 +484,7 @@ export class GameSim implements Scoreboard {
         this.ballRest.set(at.x, 0.45, at.z);
         this.restBounce = 1.5;
         this.offense = (1 - team) as TeamId;
-        this.passesLeft = 1 + Math.floor(this.rnd() * 3);
+        this.passesLeft = this.possessions % 3 === 0 ? 0 : 1 + Math.floor(this.rnd() * 2);
         this.spotOf = [0, 1, 2, 3, 4];
         this.phase = 'fetch';
       },
@@ -412,7 +542,7 @@ export class GameSim implements Scoreboard {
   private movePlayer(p: Player, dt: number) {
     this.tmp.copy(p.target).sub(p.pos);
     const dist = this.tmp.length();
-    const maxSpeed = p === this.holder ? 12.5 : 15.5;
+    const maxSpeed = p === this.holder ? (this.phase === 'drive' ? 18 : 13.5) : 15.5;
     const desired = dist > 0.25 && p.busy <= 0 ? Math.min(maxSpeed, dist * 2.2) : p.current === 'Celebrate' ? Math.min(8, dist * 2) : 0;
     p.speed += (desired - p.speed) * (1 - Math.exp(-dt * 8));
     if (dist > 0.001 && p.speed > 0.01) p.pos.addScaledVector(this.tmp.normalize(), Math.min(p.speed * dt, dist));
@@ -428,6 +558,7 @@ export class GameSim implements Scoreboard {
 
   private animate(p: Player) {
     if (p.busy > 0) return;
+    if (p.current === 'Dunk' && this.cinematicHold > 0) { this.playOnce(p, 'Celebrate', 1.2); return; }
     const moving = p.speed > 1.8;
     const scale = THREE.MathUtils.clamp(p.speed / 12, 0.7, 1.35);
     if (p === this.holder && this.phase !== 'fetch' && this.phase !== 'inbound') this.play(p, moving ? 'RunDribble' : 'IdleDribble', 0.2, moving ? scale : 1);
@@ -442,7 +573,7 @@ export class GameSim implements Scoreboard {
         const a = this.players[i].pos;
         const b = this.players[j].pos;
         const d = a.distanceTo(b);
-        if (d < 2.4 && d > 1e-4) {
+        if (d < 2.4 && d > 1e-4 && this.players[i] !== this.dunker && this.players[j] !== this.dunker) {
           const push = (2.4 - d) * 0.5;
           this.tmp.copy(a).sub(b).divideScalar(d);
           a.addScaledVector(this.tmp, push);
@@ -492,7 +623,7 @@ export class GameSim implements Scoreboard {
         const time = h.actions[h.current].time;
         const phase = (time % period) / period;
         const top = Math.max(this.tmp3.y, 1.2);
-        this.ballPos.set(this.tmp3.x, 0.45 + (top - 0.45) * Math.abs(Math.cos(Math.PI * phase)), this.tmp3.z);
+        this.ballPos.set(this.tmp3.x, 0.45 + (top - 0.45) * Math.abs(Math.sin(Math.PI * phase)), this.tmp3.z);
       }
     } else {
       this.restBounce = Math.max(0, this.restBounce - dt * 2.2);
@@ -509,6 +640,9 @@ export class GameSim implements Scoreboard {
     const kit = TEAMS[team];
     const root = SkeletonUtils.clone(gltf.scene);
     const seed = team * 5 + slot;
+    const physiques = [[.97, 1.02, .94], [.90, 1.10, .92], [1.07, 1.06, 1.03], [1.15, 1.00, 1.12], [.98, 1.13, .98]];
+    const shape = physiques[(slot + team * 2) % physiques.length];
+    root.scale.set(shape[0], shape[1], shape[2]);
     const look = LOOKS[(slot + team * 3) % LOOKS.length];
     const palette = REGIONS.map((r) => {
       switch (r) {
@@ -574,14 +708,17 @@ export class GameSim implements Scoreboard {
     const actions = {} as Record<Clip, THREE.AnimationAction>;
     for (const clip of gltf.animations) {
       const action = mixer.clipAction(clip);
-      if (clip.name === 'Shoot' || clip.name === 'Pass') {
+      if (clip.name === 'Shoot' || clip.name === 'Pass' || clip.name === 'Dunk') {
         action.setLoop(THREE.LoopOnce, 1);
         action.clampWhenFinished = true;
       }
       actions[clip.name as Clip] = action;
     }
     actions.Idle.play();
-    const hand = root.getObjectByName('handR') ?? root.getObjectByName('hand.R') ?? root;
+    const handBone = root.getObjectByName('handR') ?? root.getObjectByName('hand.R') ?? root;
+    const hand = new THREE.Object3D();
+    hand.position.set(0, .29, .08);
+    handBone.add(hand);
     return {
       team,
       slot,
@@ -595,6 +732,9 @@ export class GameSim implements Scoreboard {
       target: new THREE.Vector2(),
       heading: team === 0 ? Math.PI / 2 : -Math.PI / 2,
       speed: 0,
+      reach: shape[0],
+      height: shape[1],
+      depth: shape[2],
     };
   }
 }
