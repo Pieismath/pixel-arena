@@ -1,0 +1,125 @@
+{
+  "kind": "Real production GLB / GameSim deterministic regression; Canvas2D drawing stubbed; no GPU timings",
+  "before": {
+    "frames": 28800,
+    "seconds": 480,
+    "worstSingleFrameFeet": 20.82310593544313,
+    "jumpsOver2_5Feet": 230
+  },
+  "footPlant": {
+    "Run": {
+      "calibratedFeetPerSecond": 9.36084,
+      "stanceDriftFeet": 0.011200028401424337
+    },
+    "RunDribble": {
+      "calibratedFeetPerSecond": 9.36084,
+      "stanceDriftFeet": 0.011129994965556212
+    },
+    "Shuffle": {
+      "calibratedFeetPerSecond": 2.516097,
+      "stanceDriftFeet": 0.0004942443122311878
+    }
+  },
+  "assetSha256": "f8b8218bcd9074f9a3c8d0d96d9a498773590dd47c69563e43527c9378ad0d70",
+  "autoplay": {
+    "frames": 28800,
+    "maxStep": 0.7676380223848773,
+    "maxSpeed": 46.05828134309264,
+    "minY": 0.4208333333333325,
+    "catches": 73,
+    "scores": 31,
+    "finalScore": [
+      30,
+      35
+    ],
+    "phases": {
+      "advance": 10656,
+      "set": 3330,
+      "drive": 1767,
+      "dunk": 1701,
+      "fetch": 2978,
+      "inbound": 2060,
+      "pass": 3920,
+      "shot": 2137,
+      "loose": 251
+    }
+  },
+  "autoplay30": {
+    "frames": 7200,
+    "seconds": 240,
+    "maxStepFeet": 1.4971086423409472,
+    "catches": 39,
+    "scores": 10
+  },
+  "total": {
+    "frames": 47310,
+    "maxStepFeet": 3.0251418074381284,
+    "maxSpeedFeetPerSecond": 60.50283614876257,
+    "minimumHeightFeet": 0.4208333333333325,
+    "catches": 148,
+    "scores": 61
+  },
+  "scenarios": [
+    "dribble",
+    "moving receiver pass",
+    "forced score",
+    "forced miss",
+    "rim rebound",
+    "dunk",
+    "crossover",
+    "reset",
+    "transformed parent",
+    "manual move/pass/shot"
+  ],
+  "phases": {
+    "advance": 16549,
+    "set": 6023,
+    "drive": 2686,
+    "dunk": 2578,
+    "fetch": 4876,
+    "inbound": 3074,
+    "pass": 6347,
+    "shot": 4514,
+    "loose": 663
+  },
+  "actions": {
+    "IdleDribble": 1937,
+    "Run": 234341,
+    "Defend": 85507,
+    "Shuffle": 7516,
+    "RunDribble": 18660,
+    "Idle": 79724,
+    "Dunk": 1888,
+    "Celebrate": 19374,
+    "Land": 5459,
+    "Catch": 9500,
+    "Pass": 3461,
+    "Shoot": 2156,
+    "Jump": 2023,
+    "Rebound": 1385,
+    "Crossover": 169
+  },
+  "modes": {
+    "held": 28332,
+    "flight": 14072,
+    "loose": 4906
+  },
+  "transitions": {
+    "flight:dunk": 40,
+    "flight:score": 61,
+    "loose": 64,
+    "catch:1/1": 41,
+    "flight:pass": 148,
+    "catch:1/0": 35,
+    "catch:1/3": 12,
+    "catch:0/1": 39,
+    "catch:0/0": 37,
+    "catch:0/3": 14,
+    "flight:shot": 49,
+    "flight:rebound": 28,
+    "catch:1/4": 24,
+    "catch:1/2": 10,
+    "catch:0/4": 13,
+    "catch:0/2": 12
+  }
+}
