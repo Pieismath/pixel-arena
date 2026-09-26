@@ -1,1076 +1,432 @@
-"""Builds the big-head cartoon characters in Blender and exports them as glTF.
+"""Adult basketball athletes, authored in Blender from licensed continuous human meshes.
 
-  baller.glb  one rigged player (body, face, sneakers, jersey number plates, four hair styles)
-              with animations: Idle, Run, RunDribble, IdleDribble, Defend, Shoot, Pass, Celebrate, Dunk
-  fans.glb    static crowd meshes in several poses; colors are region codes (skin/shirt/pants/...)
-              in the vertex colors so the web app can recolor every fan per instance
-
-Run:
-  Blender --background --factory-startup --python blender/build_characters.py -- [out_dir] [--preview png_dir]
-
-Units are feet. Blender is +Z up and the characters face -Y; the glTF exporter turns that into
-+Y up, facing +Z, which is what the web app expects.
+Run: Blender --background --factory-startup --python blender/build_characters.py -- [out_dir] [--preview dir]
+The checked-in .blend source includes the continuous MakeHuman anatomy, original skin
+weights, tailored clothing and shoes. No primitive body assembly. See sources/README.md.
+Source coordinates are meters; a single rig scale converts to court feet on export.
 """
+import bpy, bmesh, math, os, sys, json
+from mathutils import Vector, Matrix, Quaternion, Euler
+HERE=os.path.dirname(os.path.abspath(__file__))
+ARGS=sys.argv[sys.argv.index('--')+1:] if '--' in sys.argv else []
+OUT=os.path.abspath(ARGS[0]) if ARGS and not ARGS[0].startswith('--') else os.path.join(HERE,'../public/models')
+PREVIEW=ARGS[ARGS.index('--preview')+1] if '--preview' in ARGS else None
+FPS=24
+REGIONS=['Skin','Jersey','Trim','Shorts','Socks','Shoe','Sole','EyeWhite','Dark','Hair']
+SCALE=6.35/2.019
+RADIUS=.40/SCALE
+bpy.ops.wm.open_mainfile(filepath=os.path.join(HERE,'sources/adult-athlete-source.blend'))
+scene=bpy.context.scene;scene.render.fps=FPS
+rig=bpy.data.objects['AthleteRig'];body=bpy.data.objects['Anatomy']
+for obj in bpy.data.objects:obj.select_set(False)
+# Clear imported materials but keep source meshes, UVs, weights and all finger bones.
+def material(name,col,rough=.78):
+ m=bpy.data.materials.new(name);m.diffuse_color=(*col,1);m.use_nodes=True
+ p=m.node_tree.nodes.get('Principled BSDF');p.inputs['Base Color'].default_value=(*col,1);p.inputs['Roughness'].default_value=rough
+ m.use_backface_culling=True
+ return m
+MATS=[material(n,c) for n,c in zip(REGIONS,[(.26,.115,.06),(.6,.045,.03),(.88,.79,.51),(.045,.055,.075),(.9,.88,.81),(.65,.07,.025),(.83,.79,.7),(.91,.9,.83),(.016,.01,.008),(.026,.012,.008)])]
+def active(o):
+ bpy.ops.object.select_all(action='DESELECT');o.select_set(True);bpy.context.view_layer.objects.active=o
 
-import math
-import os
-import sys
+def cut(o,predicate):
+ bm=bmesh.new();bm.from_mesh(o.data)
+ fs=[f for f in bm.faces if predicate(f.calc_center_median())]
+ bmesh.ops.delete(bm,geom=fs,context='FACES')
+ loose=[v for v in bm.verts if not v.link_faces]
+ if loose:bmesh.ops.delete(bm,geom=loose,context='VERTS')
+ bm.to_mesh(o.data);bm.free();o.data.update()
 
-import bmesh
-import bpy
-from mathutils import Matrix, Quaternion, Vector
+def assign(o,index):
+ o.data.materials.clear()
+ for m in MATS:o.data.materials.append(m)
+ for p in o.data.polygons:p.material_index=index;p.use_smooth=True
+
+# Real cloth surface, cut/tailored from Namuhekam's polo shell into a basketball singlet.
+jersey=bpy.data.objects['Jersey']
+cut(jersey,lambda p: (abs(p.x)>.225 and p.z>1.425) or p.z>1.747 or p.z<1.13 or (abs(p.x)<.12 and p.z>(1.60+.14*(abs(p.x)/.12)**2 if p.y<-.035 else 1.71)))
+# Natural air gap and broad compression folds; no stacks of primitive shapes.
+for v in jersey.data.vertices:
+ p=v.co;f=math.sin(p.z*41+p.x*18)*math.sin(p.x*27+p.z*12)
+ tuck=max(0,min(1,(1.24-p.z)/.11));p.x*=1.035*(1-.035*tuck);p.y*=1.045*(1-.18*tuck);p.y+=math.copysign(.0025*f,p.y)
+assign(jersey,1)
+# Fair the newly cut edges, then add a narrow, continuous stitched trim band.
+bm=bmesh.new();bm.from_mesh(jersey.data);bm.normal_update()
+bound=[e for e in bm.edges if e.is_boundary];bverts=set(v for e in bound for v in e.verts)
+for repeat in range(7):
+ changes={}
+ for v in bverts:
+  neighbors=[e.other_vert(v) for e in v.link_edges if e.is_boundary]
+  if len(neighbors)==2:changes[v]=v.co.lerp((neighbors[0].co+neighbors[1].co)*.5,.57)
+ for v,co in changes.items():v.co=co
+bm.normal_update();deform=bm.verts.layers.deform.active
+outer={};inner={}
+for v in bverts:
+ normal=v.normal.normalized();inside=sum((f.calc_center_median()-v.co for f in v.link_faces),Vector()).normalized()
+ outer[v]=bm.verts.new(v.co+normal*.0012);inner[v]=bm.verts.new(v.co+inside*.005+normal*.0014)
+ if deform:
+  for dst in [outer[v],inner[v]]:
+   for idx,w in v[deform].items():dst[deform][idx]=w
+for e in bound:
+ a,b=e.verts
+ if (a.co.z+b.co.z)*.5<1.2:continue
+ try:f=bm.faces.new((outer[a],outer[b],inner[b],inner[a]));f.material_index=2
+ except ValueError:pass
+bm.to_mesh(jersey.data);bm.free()
+# Preserve imported, modeled pleats and the natural crotch topology of the shorts.
+shorts=bpy.data.objects['Shorts'];assign(shorts,3)
+for v in shorts.data.vertices:
+ v.co.x*=1.045;v.co.y*=1.075
+for p in shorts.data.polygons:
+ c=p.center
+ if c.z<.695:p.material_index=3
+# Crew socks are an offset of the actual weighted calf surface, avoiding the
+# radius/weight mismatch produced by compressing a long source sock vertically.
+socks=body.copy();socks.data=body.data.copy();socks.name='FittedCrewSocks';scene.collection.objects.link(socks)
+bpy.data.objects.remove(bpy.data.objects['Socks'],do_unlink=True)
+cut(socks,lambda p:not(.22<p.z<.41 and abs(p.x)<.36))
+bm=bmesh.new();bm.from_mesh(socks.data);bm.normal_update()
+for v in bm.verts:
+ v.co+=Vector((v.normal.x,v.normal.y,0))*.004
+ if any(e.is_boundary for e in v.link_edges):v.co.z=.22 if v.co.z<.30 else .41
+bm.to_mesh(socks.data);bm.free();assign(socks,4)
+shoes=bpy.data.objects['Shoes'];assign(shoes,5)
+for p in shoes.data.polygons:
+ if p.center.z<.047:p.material_index=6
+ # Mesh-authored laces/upper panel accent, not painted blocks.
+ elif p.center.y<-.065 and p.center.z>.105:p.material_index=2
+# Delete fully covered geometry. Keep shoulder/deltoid, elbows, knees and calf topology intact.
+assign(body,0)
+cut(body,lambda p: (p.z<.115) or (.225<p.z<.405 and abs(p.x)<.36) or (.70<p.z<1.14 and abs(p.x)<.30) or (1.14<p.z<1.49 and abs(p.x)<.175) or (1.49<p.z<1.59 and abs(p.x)<.14 and p.y>.035))
+# Fine facial color values are encoded separately from selectable skin tone.
+eyes=bpy.data.objects['Eyes'];assign(eyes,7)
+# Actual iris geometry: eye UV material retained in source, sampled for region mask.
+for p in eyes.data.polygons:
+ c=p.center
+ # Iris faces are forward-most portion of the modeled eyeballs.
+ if (abs(c.x)-.0348)**2+(c.z-1.889)**2<.0065**2 and c.y<-.160:p.material_index=8
+sourcehair=bpy.data.objects.get('SourceHair')
+if sourcehair:bpy.data.objects.remove(sourcehair,do_unlink=True)
+# Athletic deltoid/chest fullness follows a smooth anatomical mask and keeps wrist/neck landmarks.
+for o in [body,jersey]:
+ for v in o.data.vertices:
+  p=v.co;mask=math.exp(-((p.z-1.56)/.17)**2)*math.exp(-((abs(p.x)-.21)/.20)**2)
+  p.x*=1+.075*mask;p.y*=1+.045*mask
+# Runtime LOD is made from the continuous surface before authoring facial morphs.
+for o,ratio in [(body,.70),(jersey,.82),(shoes,.85),(eyes,.65)]:
+ active(o);dec=o.modifiers.new('Athlete runtime surface LOD','DECIMATE');dec.ratio=ratio
+ bpy.ops.object.modifier_apply(modifier=dec.name)
+# Keep head landmarks realistic; variant morphs alter the face, not the body scale.
+body.shape_key_add(name='Basis')
+for name,width,jaw,nose in [('FaceBroad',1.09,1.09,1.025),('FaceLean',.93,.91,.98),('FaceStrong',1.025,1.15,1.06)]:
+ key=body.shape_key_add(name=name)
+ for v,k in zip(body.data.vertices,key.data):
+  p=v.co
+  if p.z>1.77:
+   influence=max(0,min(1,(p.z-1.77)/.08,(1.955-p.z)/.06));k.co.x*=1+(width-1)*influence
+   if p.z<1.88:k.co.x*=jaw
+   if abs(p.x)<.04 and p.y<-.09:k.co.y*=nose
+# Cap meshes follow original skull topology, preserving the detailed facial silhouette.
+def scalp(name,style):
+ o=body.copy();o.data=body.data.copy();o.name=name;scene.collection.objects.link(o)
+ if o.data.shape_keys:o.shape_key_clear()
+ cut(o,lambda p: not ((p.z>1.951 and (p.z>1.982 or abs(p.x)<.089)) or (p.z>1.893 and p.y>-.025 and abs(p.x)<.086)))
+ bm=bmesh.new();bm.from_mesh(o.data);vs=[v for v in bm.verts if any(e.is_boundary for e in v.link_edges)]
+ for _ in range(8):bmesh.ops.smooth_vert(bm,verts=vs,factor=.4,use_axis_x=True,use_axis_y=True,use_axis_z=True)
+ bm.to_mesh(o.data);bm.free()
+ for v in o.data.vertices:
+  p=v.co;d=p-Vector((0,-.015,1.93))
+  thick=.007
+  if style=='afro':thick=.031+.005*math.sin(p.x*340)*math.cos(p.y*280)*math.sin(p.z*250)
+  if style=='twists':thick=.018+.010*(.5+.5*math.sin(p.x*200+math.cos(p.y*110)))
+  p+=d.normalized()*(thick+.006)
+ assign(o,9)
+ active(o);sub=o.modifiers.new('Soft hair silhouette','SUBSURF');sub.levels=1;bpy.ops.object.modifier_apply(modifier=sub.name)
+ active(o);dec=o.modifiers.new('Scalp LOD','DECIMATE');dec.ratio=.85;bpy.ops.object.modifier_apply(modifier=dec.name)
+ return o
+hair=[scalp('HairBuzz','buzz'),scalp('HairAfro','afro'),scalp('HairTwists','twists')]
+# Beard follows jaw and chin surface, not a pasted sphere.
+beard=body.copy();beard.data=body.data.copy();beard.name='HairBeard';scene.collection.objects.link(beard)
+if beard.data.shape_keys:beard.shape_key_clear()
+cut(beard,lambda p:not (1.765<p.z<1.851 and p.y<-.068 and (p.z<1.80 or abs(p.x)>.027)))
+for v in beard.data.vertices:v.co.y-=.002
+assign(beard,9)
+beard.shape_key_add(name='Basis')
+for name,width,jaw,nose in [('FaceBroad',1.09,1.09,1.025),('FaceLean',.93,.91,.98),('FaceStrong',1.025,1.15,1.06)]:
+ key=beard.shape_key_add(name=name)
+ for v,k in zip(beard.data.vertices,key.data):
+  p=v.co
+  if p.z>1.77:
+   influence=max(0,min(1,(p.z-1.77)/.08,(1.955-p.z)/.06));k.co.x*=1+(width-1)*influence
+   if p.z<1.88:k.co.x*=jaw
+   if abs(p.x)<.04 and p.y<-.09:k.co.y*=nose
+hair.append(beard)
+# Fabric headband follows a narrow scalp strip.
+headband=body.copy();headband.data=body.data.copy();headband.name='Headband';scene.collection.objects.link(headband)
+if headband.data.shape_keys:headband.shape_key_clear()
+cut(headband,lambda p:not(1.919<p.z<1.956))
+for v in headband.data.vertices:
+ v.co.x*=1.045;v.co.y=-.015+(v.co.y+.015)*1.045
+assign(headband,2);hair.append(headband)
+# Natural eyebrow ribbons follow the actual forehead surface through ray casting.
 from mathutils.bvhtree import BVHTree
-
-ARGS = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
-HERE = os.path.dirname(os.path.abspath(__file__))
-OUT_DIR = os.path.abspath(ARGS[0]) if ARGS and not ARGS[0].startswith("--") else os.path.join(HERE, "..", "public", "models")
-PREVIEW_DIR = ARGS[ARGS.index("--preview") + 1] if "--preview" in ARGS else None
-FPS = 24
-
-
-# --------------------------------------------------------------------------------------------
-# Skeleton: joints, skin radii, bones
-# --------------------------------------------------------------------------------------------
-
-
-def mirrored(name, x, y, z):
-    return {f"{name}.L": Vector((x, y, z)), f"{name}.R": Vector((-x, y, z))}
-
-
-J = {
-    "pelvis": Vector((0, 0.0, 2.8)),
-    "waist": Vector((0, 0.02, 3.35)),
-    "chest": Vector((0, 0.0, 4.05)),
-    "neck": Vector((0, 0.04, 4.55)),
-    "head_base": Vector((0, 0.03, 4.72)),
-    "head_top": Vector((0, 0.02, 6.45)),
-    **mirrored("shoulder", 0.92, 0.04, 4.28),
-    **mirrored("elbow", 1.2, 0.12, 3.42),
-    **mirrored("wrist", 1.3, 0.02, 2.7),
-    **mirrored("palm", 1.36, -0.04, 2.4),
-    **mirrored("fingertip", 1.38, -0.08, 2.08),
-    **mirrored("hip", 0.44, 0.0, 2.66),
-    **mirrored("knee", 0.5, -0.08, 1.52),
-    **mirrored("ankle", 0.5, 0.04, 0.52),
-    **mirrored("toe", 0.52, -0.7, 0.2),
-}
-
-RADIUS = {
-    "pelvis": (0.64, 0.46),
-    "waist": (0.56, 0.40),
-    "chest": (1.01, 0.53),
-    "neck": (0.3, 0.3),
-    "head_base": (0.3, 0.3),
-    "shoulder": (0.40, 0.37),
-    "elbow": (0.25, 0.25),
-    "wrist": (0.18, 0.17),
-    "palm": (0.32, 0.21),
-    "fingertip": (0.25, 0.16),
-    "hip": (0.43, 0.43),
-    "knee": (0.27, 0.27),
-    "ankle": (0.21, 0.21),
-}
-
-SKIN_EDGES = [("pelvis", "waist"), ("waist", "chest"), ("chest", "neck"), ("neck", "head_base")]
-for _s in "LR":
-    SKIN_EDGES += [
-        ("chest", f"shoulder.{_s}"),
-        (f"shoulder.{_s}", f"elbow.{_s}"),
-        (f"elbow.{_s}", f"wrist.{_s}"),
-        (f"wrist.{_s}", f"palm.{_s}"),
-        (f"palm.{_s}", f"fingertip.{_s}"),
-        ("pelvis", f"hip.{_s}"),
-        (f"hip.{_s}", f"knee.{_s}"),
-        (f"knee.{_s}", f"ankle.{_s}"),
-    ]
-
-# Where to add rings along each skeleton edge (fractions from the first joint), and how much the
-# limb bulges between its ends. Rings are where clothing seams can fall.
-EDGE_RINGS = {
-    ("pelvis", "waist"): ([0.35, 0.5, 0.75], 0.02),
-    ("waist", "chest"): ([0.5], 0.06),
-    ("chest", "neck"): ([0.6], 0.0),
-    ("chest", "shoulder"): ([0.6], 0.0),
-    ("shoulder", "elbow"): ([0.35, 0.6], 0.14),
-    ("elbow", "wrist"): ([0.4, 0.7], 0.08),
-    ("hip", "knee"): ([0.3, 0.55, 0.72, 0.78], 0.08),
-    ("knee", "ankle"): ([0.4, 0.75, 0.85], 0.12),
-}
-
-# name, head joint, tail joint, parent
-BONES = [
-    ("hips", "pelvis", "waist", None),
-    ("spine", "waist", "chest", "hips"),
-    ("chest", "chest", "neck", "spine"),
-    ("neck", "neck", "head_base", "chest"),
-    ("head", "head_base", "head_top", "neck"),
-]
-for _s in "LR":
-    BONES += [
-        (f"clavicle.{_s}", "chest", f"shoulder.{_s}", "chest"),
-        (f"upper_arm.{_s}", f"shoulder.{_s}", f"elbow.{_s}", f"clavicle.{_s}"),
-        (f"forearm.{_s}", f"elbow.{_s}", f"wrist.{_s}", f"upper_arm.{_s}"),
-        (f"hand.{_s}", f"wrist.{_s}", f"fingertip.{_s}", f"forearm.{_s}"),
-        (f"thigh.{_s}", f"hip.{_s}", f"knee.{_s}", "hips"),
-        (f"shin.{_s}", f"knee.{_s}", f"ankle.{_s}", f"thigh.{_s}"),
-        (f"foot.{_s}", f"ankle.{_s}", f"toe.{_s}", f"shin.{_s}"),
-    ]
-PARENT = {b: p for b, _h, _t, p in BONES}
-CHILDREN = {}
-for _b, _h, _t, _p in BONES:
-    CHILDREN.setdefault(_p, []).append(_b)
-SEGMENTS = [(b, J[h], J[t]) for b, h, t, _p in BONES]
-
-HEAD_CENTER = Vector((0, 0.0, 5.57))
-HEAD_RADII = (0.76, 0.7, 0.83)
-HEAD_SCALE = Vector((.87, .90, .85))
-HEAD_ANCHOR_Z = J["head_base"].z
-
-
-def scale_head_geometry(verts):
-    # Scale around the rig pivot, keeping the neck join planted and all hair compatible.
-    for v in verts:
-        v.co.x *= HEAD_SCALE.x
-        v.co.y *= HEAD_SCALE.y
-        v.co.z = HEAD_ANCHOR_Z + (v.co.z-HEAD_ANCHOR_Z)*HEAD_SCALE.z
-
-
-def at_head(dx, dy, dz):
-    return (HEAD_CENTER.x + dx, HEAD_CENTER.y + dy, HEAD_CENTER.z + dz)
-
-
-def base(name):
-    return name.split(".")[0]
-
-
-def seg_dist(p, a, b):
-    ab = b - a
-    t = max(0.0, min(1.0, (p - a).dot(ab) / ab.length_squared))
-    return (a + ab * t - p).length
-
-
-def nearest_bones(p, exclude=("head",)):
-    ranked = sorted((seg_dist(p, a, b), name) for name, a, b in SEGMENTS if name not in exclude)
-    return ranked
-
-
-# --------------------------------------------------------------------------------------------
-# Scene helpers
-# --------------------------------------------------------------------------------------------
-
-
-def reset():
-    bpy.ops.wm.read_factory_settings(use_empty=True)
-    scene = bpy.context.scene
-    scene.render.fps = FPS
-    return scene
-
-
-def link(obj):
-    bpy.context.scene.collection.objects.link(obj)
-    return obj
-
-
-def material(name, color, rough=0.75, metal=0.0, emission=None):
-    mat = bpy.data.materials.new(name)
-    if hasattr(mat, 'use_nodes'):
-        mat.use_nodes = True
-    mat.use_backface_culling = True  # glTF doubleSided = false
-    bsdf = mat.node_tree.nodes.get("Principled BSDF")
-    bsdf.inputs["Base Color"].default_value = (*color, 1.0)
-    bsdf.inputs["Roughness"].default_value = rough
-    bsdf.inputs["Metallic"].default_value = metal
-    if emission:
-        bsdf.inputs["Emission Color"].default_value = (*emission, 1.0)
-        bsdf.inputs["Emission Strength"].default_value = 1.0
-    mat.diffuse_color = (*color, 1.0)
-    return mat
-
-
-def srgb(hex_color):
-    """Hex sRGB -> linear floats, which is what Blender color inputs expect."""
-    h = hex_color.lstrip("#")
-    out = []
-    for i in (0, 2, 4):
-        c = int(h[i : i + 2], 16) / 255
-        out.append(c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4)
-    return tuple(out)
-
-
-def faces_of(verts):
-    return {f for v in verts for f in v.link_faces}
-
-
-def add_ellipsoid(bm, center, radii, mat, segs=(20, 12), rot=None):
-    ret = bmesh.ops.create_uvsphere(bm, u_segments=segs[0], v_segments=segs[1], radius=1.0)
-    rm = rot.to_matrix() if rot else Matrix.Identity(3)
-    for v in ret["verts"]:
-        local = Vector((v.co.x * radii[0], v.co.y * radii[1], v.co.z * radii[2]))
-        v.co = rm @ local + Vector(center)
-    for f in faces_of(ret["verts"]):
-        f.material_index = mat
-        f.smooth = True
-    return ret["verts"]
-
-
-def add_box(bm, center, size, mat, rot=None, bevel=0.0):
-    ret = bmesh.ops.create_cube(bm, size=1.0)
-    verts = ret["verts"]
-    rm = rot.to_matrix() if rot else Matrix.Identity(3)
-    for v in verts:
-        local = Vector((v.co.x * size[0], v.co.y * size[1], v.co.z * size[2]))
-        v.co = rm @ local + Vector(center)
-    faces = faces_of(verts)
-    if bevel > 0:
-        edges = list({e for f in faces for e in f.edges})
-        res = bmesh.ops.bevel(bm, geom=edges, offset=bevel, segments=2, affect="EDGES", profile=0.5)
-        # Bevel replaces some of the original faces, so keep only the ones that still exist.
-        faces = {f for f in faces if f.is_valid} | set(res["faces"])
-        verts = list({v for f in faces for v in f.verts})
-    for f in faces:
-        f.material_index = mat
-        f.smooth = bevel > 0
-    return verts
-
-
-def add_torus(bm, center, major, minor, mat, segs=24, sides=8, arc=(0.0, 2 * math.pi), rot=None, closed=True):
-    """Torus (or an arc of one) lying in the local XY plane."""
-    rm = rot.to_matrix() if rot else Matrix.Identity(3)
-    rings = []
-    count = segs if closed else segs + 1
-    for i in range(count):
-        a = arc[0] + (arc[1] - arc[0]) * i / segs
-        ring = []
-        for j in range(sides):
-            b = 2 * math.pi * j / sides
-            r = major + minor * math.cos(b)
-            local = Vector((r * math.cos(a), r * math.sin(a), minor * math.sin(b)))
-            ring.append(bm.verts.new(rm @ local + Vector(center)))
-        rings.append(ring)
-    faces = []
-    last = count if closed else count - 1
-    for i in range(last):
-        r0, r1 = rings[i], rings[(i + 1) % count]
-        for j in range(sides):
-            f = bm.faces.new((r0[j], r0[(j + 1) % sides], r1[(j + 1) % sides], r1[j]))
-            f.material_index = mat
-            f.smooth = True
-            faces.append(f)
-    if not closed:
-        for ring, flip in ((rings[0], True), (rings[-1], False)):
-            cap = bm.faces.new(list(reversed(ring)) if flip else ring)
-            cap.material_index = mat
-    return [v for r in rings for v in r]
-
-
-# --------------------------------------------------------------------------------------------
-# Body
-# --------------------------------------------------------------------------------------------
-
-
-def build_body_mesh(subsurf, region_of, materials):
-    """Skin-modifier body. Clothing regions are assigned on the coarse skin mesh and then
-    subdivided, so seams follow the edge loops instead of zig-zagging across triangles."""
-    names = [n for n in J if n != "head_top" and not n.startswith("toe")]
-    pts, radii, edges = [], [], []
-    index = {}
-    for n in names:
-        index[n] = len(pts)
-        pts.append(J[n])
-        radii.append(RADIUS[base(n)])
-    for a, b in SKIN_EDGES:
-        rings, bulge = EDGE_RINGS.get((base(a), base(b)), ([], 0.0))
-        prev = index[a]
-        ra, rb = RADIUS[base(a)], RADIUS[base(b)]
-        for t in rings:
-            grow = 1 + bulge * math.sin(math.pi * t)
-            pts.append(J[a].lerp(J[b], t))
-            radii.append(((ra[0] + (rb[0] - ra[0]) * t) * grow, (ra[1] + (rb[1] - ra[1]) * t) * grow))
-            edges.append((prev, len(pts) - 1))
-            prev = len(pts) - 1
-        edges.append((prev, index[b]))
-
-    skel = bpy.data.meshes.new("skeleton")
-    skel.from_pydata(pts, edges, [])
-    obj = link(bpy.data.objects.new("skeleton", skel))
-    skin = obj.modifiers.new("Skin", "SKIN")
-    skin.branch_smoothing = 0.6
-    skin.use_smooth_shade = True
-    for i, r in enumerate(radii):
-        sv = skel.skin_vertices[0].data[i]
-        sv.radius = r
-        sv.use_root = i == index["pelvis"]
-    depsgraph = bpy.context.evaluated_depsgraph_get()
-    coarse = bpy.data.meshes.new_from_object(obj.evaluated_get(depsgraph))
-    bpy.data.objects.remove(obj)
-    bpy.data.meshes.remove(skel)
-
-    mats = {n: i for i, n in enumerate(materials)}
-    bm = bmesh.new()
-    bm.from_mesh(coarse)
-    for f in bm.faces:
-        c = f.calc_center_median()
-        _d, bone = nearest_bones(c)[0]
-        f.material_index = mats[region_of(bone, c)]
-        f.smooth = True
-    bm.to_mesh(coarse)
-    bm.free()
-    if not subsurf:
-        return coarse
-
-    tmp = link(bpy.data.objects.new("coarse", coarse))
-    sub = tmp.modifiers.new("Subsurf", "SUBSURF")
-    sub.levels = subsurf
-    sub.render_levels = subsurf
-    depsgraph = bpy.context.evaluated_depsgraph_get()
-    body = bpy.data.meshes.new_from_object(tmp.evaluated_get(depsgraph))
-    bpy.data.objects.remove(tmp)
-    bpy.data.meshes.remove(coarse)
-    return body
-
-
-PLAYER_MATS = ["Skin", "Jersey", "Trim", "Shorts", "Socks", "Shoe", "Sole", "EyeWhite", "Dark", "Hair"]
-FAN_REGIONS = ["Skin", "Shirt", "Pants", "Hair", "Shoe", "EyeWhite", "Dark", "Sole"]
-
-
-def player_region(bone, c):
-    """Which material a body face gets on a player (tank top jersey, long shorts)."""
-    b = base(bone)
-    if b == "hips":
-        if c.z < 2.99:
-            return "Shorts"
-        return "Trim" if c.z < 3.08 else "Jersey"
-    if b in ("spine", "chest"):
-        return "Jersey"
-    if b == "clavicle":
-        return "Jersey" if abs(c.x) < 0.6 else "Skin"
-    if b == "thigh":
-        if c.z > 1.85:
-            return "Shorts"
-        return "Trim" if c.z > 1.77 else "Skin"
-    if b == "shin":
-        return "Socks" if c.z < 0.78 else "Skin"
-    return "Skin"
-
-
-def fan_region(bone, c):
-    """Which region a body face gets on a fan (t-shirt with sleeves, long pants)."""
-    b = base(bone)
-    if b == "hips":
-        return "Pants" if c.z < 3.0 else "Shirt"
-    if b in ("spine", "chest", "clavicle"):
-        return "Shirt"
-    if b == "upper_arm":
-        return "Shirt" if c.z > 3.95 else "Skin"
-    if b in ("thigh", "shin"):
-        return "Pants" if c.z > 0.62 else "Skin"
-    return "Skin"
-
-
-def add_cranium(bm, mat, low_poly=False):
-    """An authored ring silhouette: broad temples, cheek planes, square tapered jaw."""
-    count = 12 if low_poly else 32
-    levels = [(-.79, .38, .40), (-.65, .57, .54), (-.40, .67, .62),
-              (-.23, .71, .64), (-.05, .76, .69), (.12, .75, .67),
-              (.27, .74, .69), (.51, .66, .61), (.73, .41, .41)]
-    rings = []
-    for z, rx, ry in levels:
-        ring = []
-        for i in range(count):
-            a = 2 * math.pi * i / count
-            # A mildly squared cross section keeps the face from reading as a balloon.
-            x = math.copysign(abs(math.cos(a)) ** .87, math.cos(a)) * rx
-            y = math.copysign(abs(math.sin(a)) ** .91, math.sin(a)) * ry
-            if y < -.25:
-                # The nose bridge, brow shelf and cheek planes belong to the face surface.
-                # This gives real relief and shadows without stuck-on spheres or stickers.
-                middle = max(0, 1-abs(x)/.23)
-                if -.23 <= z <= .27:
-                    nose = {.27:.025, .12:.12, -.05:.205, -.23:.065}.get(z, 0)
-                    y -= nose * middle
-                if z == .27:
-                    y -= .055 * max(0, 1-abs(abs(x)-.29)/.24)
-                if z == -.05:
-                    y -= .042 * max(0, 1-abs(abs(x)-.45)/.22)
-                if z == -.40:
-                    y += .05 * max(0, 1-abs(abs(x)-.40)/.25)
-            ring.append(bm.verts.new(HEAD_CENTER + Vector((x, y, z))))
-        rings.append(ring)
-    for lower, upper in zip(rings, rings[1:]):
-        for i in range(count):
-            f = bm.faces.new((lower[i], lower[(i + 1) % count], upper[(i + 1) % count], upper[i]))
-            f.material_index = mat
-            f.smooth = True
-    for ring, flip in ((rings[0], True), (rings[-1], False)):
-        f = bm.faces.new(list(reversed(ring)) if flip else ring)
-        f.material_index = mat
-        f.smooth = True
-    return [v for ring in rings for v in ring]
-
-
-def add_head(bm, mats, low_poly=False):
-    small = (6, 4) if low_poly else (14, 8)
-    add_cranium(bm, mats["Skin"], low_poly)
-    for sx in (1, -1):
-        add_ellipsoid(bm, at_head(sx * .755, .01, -.04), (.12, .14, .19), mats["Skin"], small)
-        if not low_poly:
-            add_ellipsoid(bm, at_head(sx * .79, -.107, -.025), (.046, .024, .071), mats["Skin"], small)
-        # Narrow lids and strong brows give an intent expression at court scale.
-        add_ellipsoid(bm, at_head(sx * .27, -.667, .13), (.166, .052, .076), mats["EyeWhite"], small)
-        add_ellipsoid(bm, at_head(sx * .265, -.725, .132), (.059, .024, .060), mats["Dark"], small)
-        brow_rot = Quaternion((0, 1, 0), math.radians(-12 * sx))
-        add_box(bm, at_head(sx * .275, -.698, .292), (.34, .105, .095), mats["Hair"], rot=brow_rot, bevel=.0 if low_poly else .025)
-    # A small asymmetric grin is more athletic than the original toy-like smile.
-    add_box(bm, at_head(0, -.641, -.405), (.38, .047, .10), mats["Dark"], bevel=0 if low_poly else .025)
-    if not low_poly:
-        add_box(bm, at_head(.015, -.668, -.385), (.285, .016, .037), mats["EyeWhite"], bevel=.008)
-
-
-
-def head_shell(bm, scale, keep, mat, segs=(28, 18)):
-    """A copy of the head surface, pushed out a bit, keeping only the faces `keep` accepts."""
-    verts = add_cranium(bm, mat, low_poly=segs[0] <= 12)
-    for v in verts:
-        v.co = HEAD_CENTER + (v.co - HEAD_CENTER) * scale
-    doomed = [f for f in faces_of(verts) if not keep(f.calc_center_median() - HEAD_CENTER)]
-    bmesh.ops.delete(bm, geom=doomed, context="FACES")
-    # Give the shell some thickness so its open edge doesn't look paper-thin.
-    remaining = [f for f in faces_of([v for v in verts if v.is_valid])]
-    if remaining:
-        bmesh.ops.solidify(bm, geom=remaining, thickness=0.04)
-
-
-def add_twists(bm, mat, low=False):
-    head_shell(bm, 1.025, lambda d: d.z > .4 or (d.y > -.22 and d.z > .05), mat, (12,8) if low else (24,14))
-    for ix, x in enumerate((-.43, 0, .43)):
-        for iy, y in enumerate((-.34, .05, .40)):
-            z = .57 + (.08 if ix == 1 else .02) - (.05 if iy == 2 else 0)
-            add_ellipsoid(bm, at_head(x,y,z), (.16,.20,.18), mat, (8,5) if low else (12,8),
-                          rot=Quaternion((0,1,0), math.radians(-16 if ix == 0 else 16)))
-
-
-def add_cropped_curls(bm, mat, low=False):
-    # A tight irregular crop, wider at the temples and flatter at the crown than a sphere.
-    verts = add_ellipsoid(bm, at_head(0,.055,.45), (.80,.73,.405), mat, (12,8) if low else (28,16))
-    for v in verts:
-        d = v.co - Vector(at_head(0,.055,.45))
-        angle = math.atan2(d.y, d.x)
-        curl = .018 * math.sin(angle * 9 + d.z*20) + .012 * math.cos(angle*15-d.z*13)
-        v.co += d.normalized() * curl
-        if v.co.z > HEAD_CENTER.z + .76:
-            v.co.z = HEAD_CENTER.z + .76 + (v.co.z-HEAD_CENTER.z-.76)*.35
-
-
-HAIR_STYLES = {
-    "Twists": add_twists,
-    "Buzz": lambda bm, m, low=False: head_shell(bm, 1.035, lambda d: d.z > 0.52 or (d.y > -0.25 and d.z > 0.0), m, (12, 8) if low else (28, 18)),
-    "Afro": add_cropped_curls,
-    "Beard": lambda bm, m, low=False: head_shell(bm, 1.045, lambda d: d.z < -0.12 and d.y < 0.35 and not (abs(d.x) < 0.22 and -0.46 < d.z < -0.24 and d.y < -0.5), m, (12, 8) if low else (28, 18)),
-}
-
-
-def add_shoes(bm, mats, low_poly=False):
-    for sx in (1, -1):
-        x = sx * 0.5
-        if low_poly:
-            add_box(bm, (x, -0.2, 0.11), (0.58, 1.16, 0.22), mats["Sole"])
-            add_ellipsoid(bm, (x, -0.22, 0.36), (0.32, 0.62, 0.31), mats["Shoe"], (8, 5))
-            continue
-        add_box(bm, (x, -0.2, 0.11), (0.58, 1.16, 0.22), mats["Sole"], bevel=0.1)  # sole
-        add_ellipsoid(bm, (x, -0.22, 0.36), (0.32, 0.62, 0.31), mats["Shoe"], (20, 12))  # upper
-        add_ellipsoid(bm, (x, -0.02, 0.62), (0.27, 0.3, 0.25), mats["Shoe"], (16, 8))  # high-top collar
-        add_ellipsoid(bm, (x, -0.7, 0.2), (0.26, 0.14, 0.12), mats["Sole"], (12, 6))  # rubber toe cap
-        add_box(bm, (x, -.22, .105), (.62, 1.14, .075), mats["Dark"], bevel=.025)
-        add_box(bm, (x, -.18, .57), (.31, .46, .045), mats["Trim"], bevel=.03)
-        for y in (-.05, -.16, -.27, -.38):
-            add_box(bm, (x, y, .598 - max(0, -y-.16)*.38), (.32, .032, .035), mats["Sole"], bevel=.012)
-        for side in (-1, 1):
-            add_box(bm, (x + side * .293, -.18, .35), (.035, .41, .095), mats["Trim"], rot=Quaternion((1,0,0), math.radians(-22)), bevel=.025)
-        add_box(bm, (x, .21, .62), (.18, .075, .27), mats["Trim"], bevel=.025)
-
-
-def add_thumbs(bm, mats):
-    for sx in (1, -1):
-        add_ellipsoid(bm, (sx * 1.25, -0.24, 2.38), (0.12, 0.12, 0.17), mats["Skin"], (10, 6), rot=Quaternion((0, 1, 0), math.radians(20 * sx)))
-
-
-def add_kit_detail(bm, mats):
-    """Sewn ribbons are projected onto the body, so they follow cloth instead of floating."""
-    body_tree = BVHTree.FromBMesh(bm)
-
-    def front_ribbon(points, width, mat):
-        rings = []
-        for i, (x, z) in enumerate(points):
-            tangent = Vector(points[min(len(points)-1, i+1)]) - Vector(points[max(0, i-1)])
-            across = Vector((tangent.y, -tangent.x)).normalized() * (width/2)
-            edge = []
-            for sign in (-1, 1):
-                xx, zz = x + sign*across.x, z + sign*across.y
-                hit, normal, _, _ = body_tree.ray_cast(Vector((xx, -2, zz)), Vector((0, 1, 0)))
-                if hit is None:
-                    return
-                edge.append(bm.verts.new(hit + normal * .018))
-            rings.append(edge)
-        for l, r in zip(rings, rings[1:]):
-            f = bm.faces.new((l[0], l[1], r[1], r[0])); f.material_index = mat; f.smooth = True
-
-    for side in (-1, 1):
-        # Neck and long contrast seam down the side of the original jersey.
-        front_ribbon([(side*(.05 + t*.30), 3.99+t*.27) for t in (0,.2,.4,.6,.8,1)], .065, mats["Trim"])
-        front_ribbon([(side*(.45+t*.16), 3.17+t*.83) for t in (0,.2,.4,.6,.8,1)], .063, mats["Trim"])
-        # Shorts hem follows the round leg surface instead of sitting in front of it.
-        front_ribbon([(side*(.23+t*.54), 1.99) for t in (0,.2,.4,.6,.8,1)], .04, mats["Trim"])
-        # Cloth side panel: project its edges inward from the outer leg.
-        rings = []
-        for z in (2.03, 2.18, 2.34, 2.50, 2.66):
-            ring = []
-            for y in (-.17, .07):
-                hit, normal, _, _ = body_tree.ray_cast(Vector((side*.98, y, z)), Vector((-side, 0, 0)))
-                if hit is not None:
-                    ring.append(bm.verts.new(hit+normal*.022))
-            if len(ring) == 2: rings.append(ring)
-        for lower, upper in zip(rings,rings[1:]):
-            vertices = (lower[0], lower[1], upper[1], upper[0])
-            f = bm.faces.new(vertices if side > 0 else tuple(reversed(vertices))); f.material_index=mats["Trim"]; f.smooth=True
-    add_ellipsoid(bm, (1.30, .015, 2.78), (.225, .21, .17), mats["Trim"], (12, 6))
-    add_ellipsoid(bm, (-.5, -.04, 1.20), (.28, .285, .30), mats["Dark"], (12, 8))
-
-
-def weight_mesh(obj, rigid=None):
-    """Vertex weights: each vertex follows its nearest bone, blended with that bone's parent or
-    child near the joints. `rigid(v_co)` can pin a vertex to one bone (head parts, shoes)."""
-    groups = {b: obj.vertex_groups.new(name=b) for b, _h, _t, _p in BONES}
-    for v in obj.data.vertices:
-        pin = rigid(v.co) if rigid else None
-        if pin:
-            groups[pin].add([v.index], 1.0, "REPLACE")
-            continue
-        ranked = nearest_bones(v.co)
-        d1, b1 = ranked[0]
-        neighbours = set(CHILDREN.get(b1, [])) | ({PARENT[b1]} - {None})
-        second = next(((d, b) for d, b in ranked[1:] if b in neighbours), None)
-        if second is None:
-            groups[b1].add([v.index], 1.0, "REPLACE")
-            continue
-        d2, b2 = second
-        k = 4.0
-        w1 = d2**k / (d1**k + d2**k + 1e-9)
-        groups[b1].add([v.index], w1, "REPLACE")
-        if 1 - w1 > 0.01:
-            groups[b2].add([v.index], 1 - w1, "REPLACE")
-
-
-def rigid_pin(co):
-    """Head parts follow the head; sneakers follow the feet."""
-    if (co - HEAD_CENTER).length < 1.4 and co.z > 4.74:
-        return "head"
-    if co.z < 0.62 and abs(co.x) > 0.15 and co.y < 0.45:
-        return "foot.L" if co.x > 0 else "foot.R"
-    return None
-
-
-def assemble(name, body_mesh, region_of, materials, low_poly=False, hair=None):
-    """Body + head + face + sneakers in one mesh, with a material slot per region."""
-    mats = {n: i for i, n in enumerate(materials)}
-    bm = bmesh.new()
-    bm.from_mesh(body_mesh)
-    if not low_poly:
-        add_kit_detail(bm, mats)
-    body_verts = set(bm.verts)
-    add_head(bm, mats, low_poly)
-    scale_head_geometry([v for v in bm.verts if v not in body_verts])
-    add_shoes(bm, mats, low_poly)
-    if not low_poly:
-        add_thumbs(bm, mats)
-    if hair:
-        before_hair = set(bm.verts)
-        hair(bm, mats["Hair"])
-        scale_head_geometry([v for v in bm.verts if v not in before_hair])
-    me = bpy.data.meshes.new(name)
-    bm.to_mesh(me)
-    bm.free()
-    return me
-
-
-# --------------------------------------------------------------------------------------------
-# Rig and animation
-# --------------------------------------------------------------------------------------------
-
-
-def build_rig(name="Rig"):
-    arm = bpy.data.armatures.new(name)
-    rig = link(bpy.data.objects.new(name, arm))
-    bpy.context.view_layer.objects.active = rig
-    rig.select_set(True)
-    bpy.ops.object.mode_set(mode="EDIT")
-    edit = {}
-    for bname, h, t, parent in BONES:
-        eb = arm.edit_bones.new(bname)
-        eb.head = J[h]
-        eb.tail = J[t]
-        eb.roll = 0.0
-        if parent:
-            eb.parent = edit[parent]
-        edit[bname] = eb
-    bpy.ops.object.mode_set(mode="OBJECT")
-    return rig
-
-
-def mirror_pose(pose):
-    out = {}
-    for bone, (rx, ry, rz) in pose.items():
-        if bone.endswith(".L"):
-            other = bone[:-2] + ".R"
-        elif bone.endswith(".R"):
-            other = bone[:-2] + ".L"
-        else:
-            other = bone
-            ry, rz = -ry, -rz
-            out[other] = (rx, ry, rz)
-            continue
-        out[other] = (rx, -ry, -rz)
-    return out
-
-
-def both(name, rx=0, ry=0, rz=0):
-    """Same rotation on both sides (Y/Z mirrored)."""
-    return {f"{name}.L": (rx, ry, rz), f"{name}.R": (rx, -ry, -rz)}
-
-
-def bone_quat(rig, bone, rx, ry, rz):
-    """Rotation given in armature axes (X = character's left, Y = back, Z = up), relative to the
-    parent, converted into the bone's local frame."""
-    rest = rig.data.bones[bone].matrix_local.to_quaternion()
-    r = Quaternion((0, 0, 1), math.radians(rz)) @ Quaternion((0, 1, 0), math.radians(ry)) @ Quaternion((1, 0, 0), math.radians(rx))
-    return rest.inverted() @ r @ rest
-
-
-def apply_pose(rig, pose, hips=(0, 0, 0)):
-    for pb in rig.pose.bones:
-        pb.rotation_mode = "QUATERNION"
-        rx, ry, rz = pose.get(pb.name, (0, 0, 0))
-        pb.rotation_quaternion = bone_quat(rig, pb.name, rx, ry, rz)
-        pb.location = (0, 0, 0)
-    hb = rig.pose.bones["hips"]
-    rest = rig.data.bones["hips"].matrix_local.to_3x3()
-    hb.location = rest.inverted() @ Vector(hips)
-
-
-def key_all(rig, frame):
-    for pb in rig.pose.bones:
-        pb.keyframe_insert("rotation_quaternion", frame=frame)
-    rig.pose.bones["hips"].keyframe_insert("location", frame=frame)
-
-
-def make_action(rig, name, keys):
-    """keys: list of (frame, pose_dict, hips_offset)."""
-    action = bpy.data.actions.new(name)
-    action.use_fake_user = True
-    rig.animation_data_create()
-    rig.animation_data.action = action
-    for frame, pose, hips in keys:
-        apply_pose(rig, pose, hips)
-        key_all(rig, frame)
-    return action
-
-
-# Poses. Angles in degrees, armature axes. Useful signs (character faces -Y):
-#   thigh/upper_arm/forearm rx < 0 swings forward; shin rx > 0 bends the knee;
-#   spine/chest/head rx > 0 leans forward; left arm ry < 0 raises it out to the side.
-
-RUN_A = {
-    "thigh.L": (-42, 0, 0), "shin.L": (14, 0, 0), "foot.L": (-8, 0, 0),
-    "thigh.R": (32, 0, 0), "shin.R": (72, 0, 0), "foot.R": (20, 0, 0),
-    "upper_arm.L": (38, 8, 0), "forearm.L": (-62, 0, 0),
-    "upper_arm.R": (-48, -8, 0), "forearm.R": (-78, 0, 0),
-    "spine": (12, 0, 0), "chest": (0, 0, -8), "head": (-8, 0, 6),
-}
-RUN_B = {
-    "thigh.L": (6, 0, 0), "shin.L": (12, 0, 0),
-    "thigh.R": (-14, 0, 0), "shin.R": (98, 0, 0), "foot.R": (10, 0, 0),
-    "upper_arm.L": (2, 8, 0), "forearm.L": (-62, 0, 0),
-    "upper_arm.R": (-6, -8, 0), "forearm.R": (-72, 0, 0),
-    "spine": (12, 0, 0), "head": (-8, 0, 0),
-}
-STANCE = {
-    **both("thigh", -24, 0, 0), **both("shin", 44, 0, 0), **both("foot", -18, 0, 0),
-    "spine": (16, 0, 0), "head": (-12, 0, 0),
-}
-DRIBBLE_UP = {"upper_arm.R": (-22, 18, 0), "forearm.R": (-68, 0, 0), "hand.R": (-20, 0, 0)}
-DRIBBLE_DOWN = {"upper_arm.R": (-30, 18, 0), "forearm.R": (-18, 0, 0), "hand.R": (18, 0, 0)}
-GUARD_L = {"upper_arm.L": (-32, -34, 0), "forearm.L": (-42, 0, 0)}
-
-
-def run_keys(overrides=None):
-    a = {**RUN_A, **(overrides or {})}
-    b = {**RUN_B, **(overrides or {})}
-    ma = {**mirror_pose(RUN_A), **(overrides or {})}
-    mb = {**mirror_pose(RUN_B), **(overrides or {})}
-    return [(0, a, (0, 0, -0.12)), (4, b, (0, 0, 0.16)), (8, ma, (0, 0, -0.12)), (12, mb, (0, 0, 0.16)), (16, a, (0, 0, -0.12))]
-
-
-def build_actions(rig):
-    idle_a = {**both("upper_arm", 2, -4, 0), **both("forearm", -12, 0, 0), "spine": (3, 0, 0), "head": (2, 0, 0)}
-    idle_b = {**both("upper_arm", -2, -6, 0), **both("forearm", -16, 0, 0), "spine": (5, 0, 0), "chest": (-2, 0, 0), "head": (-2, 0, 0)}
-    make_action(rig, "Idle", [(0, idle_a, (0, 0, 0)), (24, idle_b, (0, 0, 0.04)), (48, idle_a, (0, 0, 0))])
-
-    make_action(rig, "Run", run_keys())
-
-    dribble_run = []
-    for frame, pose, hips in run_keys():
-        extra = DRIBBLE_DOWN if frame in (0, 8, 16) else DRIBBLE_UP
-        pose = {k: v for k, v in pose.items() if not k.endswith(".R") or k.startswith(("thigh", "shin", "foot"))}
-        dribble_run.append((frame, {**pose, **extra}, hips))
-    make_action(rig, "RunDribble", dribble_run)
-
-    crouch = (0, 0, -0.34)
-    make_action(
-        rig,
-        "IdleDribble",
-        [
-            (0, {**STANCE, **GUARD_L, **DRIBBLE_DOWN}, crouch),
-            (6, {**STANCE, **GUARD_L, **DRIBBLE_UP}, (0, 0, -0.3)),
-            (12, {**STANCE, **GUARD_L, **DRIBBLE_DOWN}, crouch),
-        ],
-    )
-
-    defend = {
-        "thigh.L": (-28, -14, 0), "thigh.R": (-28, 14, 0), **both("shin", 52, 0, 0), **both("foot", -22, 0, 0),
-        "spine": (22, 0, 0), "head": (-18, 0, 0),
-        **both("upper_arm", -24, -68, 0), **both("forearm", -34, 0, 0),
-    }
-    defend_b = {**defend, **both("upper_arm", -30, -58, 0)}
-    make_action(rig, "Defend", [(0, defend, (0, 0, -0.52)), (12, defend_b, (0, 0, -0.44)), (24, defend, (0, 0, -0.52))])
-
-    hold = {**both("upper_arm", -58, -8, 0), **both("forearm", -84, 0, 0)}
-    make_action(
-        rig,
-        "Shoot",
-        [
-            (0, {**STANCE, **hold}, (0, 0, -0.26)),
-            (5, {**both("thigh", -36, 0, 0), **both("shin", 64, 0, 0), **both("foot", -26, 0, 0), "spine": (12, 0, 0),
-                 "upper_arm.R": (-95, 0, 0), "forearm.R": (-85, 0, 0), "hand.R": (45, 0, 0),
-                 "upper_arm.L": (-85, 18, 0), "forearm.L": (-80, 0, 0)}, (0, 0, -0.56)),
-            (11, {**both("thigh", -4, 0, 0), **both("shin", 16, 0, 0), **both("foot", 30, 0, 0),
-                  "upper_arm.R": (-150, 0, 0), "forearm.R": (-30, 0, 0), "hand.R": (30, 0, 0),
-                  "upper_arm.L": (-130, 15, 0), "forearm.L": (-50, 0, 0)}, (0, 0, 1.9)),
-            (14, {**both("thigh", -2, 0, 0), **both("shin", 18, 0, 0), **both("foot", 30, 0, 0),
-                  "upper_arm.R": (-158, 0, 0), "forearm.R": (-4, 0, 0), "hand.R": (-70, 0, 0),
-                  "upper_arm.L": (-120, 20, 0), "forearm.L": (-30, 0, 0)}, (0, 0, 1.75)),
-            (18, {**both("thigh", -10, 0, 0), **both("shin", 26, 0, 0), **both("foot", 12, 0, 0),
-                  "upper_arm.R": (-152, 0, 0), "forearm.R": (-6, 0, 0), "hand.R": (-70, 0, 0),
-                  "upper_arm.L": (-100, 20, 0), "forearm.L": (-30, 0, 0)}, (0, 0, 0.8)),
-            (24, {**STANCE, **both("upper_arm", -10, -6, 0), **both("forearm", -30, 0, 0)}, (0, 0, -0.2)),
-        ],
-    )
-
-    make_action(
-        rig,
-        "Pass",
-        [
-            (0, {**STANCE, **hold}, (0, 0, -0.22)),
-            (5, {**STANCE, **both("upper_arm", -84, -4, 0), **both("forearm", -8, 0, 0), **both("hand", -30, 0, 0), "spine": (22, 0, 0)}, (0, 0, -0.2)),
-            (12, {**STANCE, **both("upper_arm", -20, -8, 0), **both("forearm", -30, 0, 0)}, (0, 0, -0.2)),
-        ],
-    )
-
-    up_a = {**both("upper_arm", -150, -24, 0), **both("forearm", -20, 0, 0), "head": (-16, 0, 0), "spine": (-6, 0, 0)}
-    up_b = {**both("upper_arm", -172, -12, 0), **both("forearm", -64, 0, 0), "head": (-22, 0, 0), "spine": (-8, 0, 0)}
-    make_action(rig, "Celebrate", [(0, up_a, (0, 0, 0.3)), (6, up_b, (0, 0, 0.0)), (12, up_a, (0, 0, 0.3)), (18, up_b, (0, 0, 0.0)), (24, up_a, (0, 0, 0.3))])
-
-    # One-handed tomahawk: gather, asymmetric takeoff, extended reach, follow-through, landing.
-    dunk_gather = {**STANCE, "spine": (17, 0, -12), "head": (-18, 0, 8),
-                   "upper_arm.R": (-78, 8, 0), "forearm.R": (-86, 0, 0),
-                   "upper_arm.L": (-35, -42, 0), "forearm.L": (-40, 0, 0)}
-    dunk_air = {"thigh.L": (-65, 0, 0), "shin.L": (92, 0, 0), "foot.L": (-15, 0, 0),
-                "thigh.R": (14, 0, 0), "shin.R": (65, 0, 0), "foot.R": (20, 0, 0),
-                "spine": (-10, 0, -16), "chest": (-8, 0, 15), "head": (8, 0, 0),
-                "upper_arm.R": (-171, 8, 0), "forearm.R": (-8, 0, 0), "hand.R": (-7, 0, 0),
-                "upper_arm.L": (-66, -65, 0), "forearm.L": (-20, 0, 0)}
-    dunk_finish = {**dunk_air, "spine": (9, 0, -8), "upper_arm.R": (-145, 0, 0),
-                   "forearm.R": (-8, 0, 0), "hand.R": (-55, 0, 0), "thigh.L": (-25, 0, 0), "shin.L": (48, 0, 0)}
-    make_action(rig, "Dunk", [
-        (0, dunk_gather, (0, 0, -.30)),
-        (5, {**dunk_gather, **both("thigh", -42, 0, 0), **both("shin", 68, 0, 0)}, (0, 0, -.50)),
-        (12, dunk_air, (0, 0, 3.30)),
-        (17, dunk_air, (0, 0, 3.70)),
-        (21, dunk_finish, (0, 0, 3.32)),
-        (28, {**STANCE, **both("upper_arm", -10, -25, 0), **both("forearm", -35, 0, 0)}, (0, 0, -.43)),
-        (36, idle_a, (0, 0, 0)),
-    ])
-
-    rig.animation_data.action = bpy.data.actions["Idle"]
-
-
-# Crowd poses: static, baked into the mesh.
-SIT = {**both("thigh", -86, -6, 0), **both("shin", 86, 0, 0), **both("upper_arm", -22, -2, 0), **both("forearm", -62, 0, 0), "spine": (6, 0, 0)}
-FAN_POSES = {
-    "Sit": (SIT, (0, 0, 0)),
-    "Clap": ({**SIT, **both("upper_arm", -58, 16, 0), **both("forearm", -74, 0, 0), **both("hand", 0, 0, 0)}, (0, 0, 0)),
-    "Card": ({**SIT, **both("upper_arm", -150, 10, 0), **both("forearm", -10, 0, 0), "head": (-6, 0, 0)}, (0, 0, 0)),
-    "Cheer": ({**both("upper_arm", -160, -22, 0), **both("forearm", -18, 0, 0), "head": (-14, 0, 0), "spine": (-4, 0, 0)}, (0, 0, 0)),
-    "Stand": ({**both("upper_arm", 4, -4, 0), **both("forearm", -30, 0, 0), "spine": (2, 0, 0)}, (0, 0, 0)),
-}
-
-
-# --------------------------------------------------------------------------------------------
-# Builders
-# --------------------------------------------------------------------------------------------
-
-
-def number_plate(name, y, flip):
-    """Small plane on the chest or back for the jersey number (textured in the web app)."""
-    me = bpy.data.meshes.new(name)
-    w, h = 0.62, 0.6
-    zc = 3.82
-    # Wrap around the torso a little: three columns bent on an arc.
-    cols = 4
-    verts, faces, uvs = [], [], []
-    for i in range(cols + 1):
-        u = i / cols
-        ang = (u - 0.5) * 0.9
-        x = math.sin(ang) * 0.8 * (1 if not flip else -1)
-        yy = y * math.cos(ang)
-        for j, v in enumerate((0.0, 1.0)):
-            verts.append((x, yy, zc - h / 2 + v * h))
-    for i in range(cols):
-        a, b, c, d = i * 2, i * 2 + 1, (i + 1) * 2 + 1, (i + 1) * 2
-        faces.append((a, d, c, b))  # the mirrored x already makes the back plate face outward
-    me.from_pydata(verts, [], faces)
-    uv = me.uv_layers.new(name="UVMap")
-    for poly in me.polygons:
-        for li in poly.loop_indices:
-            vi = me.loops[li].vertex_index
-            col, row = divmod(vi, 2)
-            uv.data[li].uv = (col / cols, float(row))
-    me.materials.append(material(f"{name}Mat", (1, 1, 1), rough=0.9))
-    obj = link(bpy.data.objects.new(name, me))
-    return obj
-
-
-def regionize(obj, codes, slots=16):
-    """Replace an object's materials with one shared material and store each face's region
-    (from `codes[material_index]`) in the red vertex color, so the web app can color every
-    player with one draw call."""
-    me = obj.data
-    attr = me.color_attributes.new("Region", "FLOAT_COLOR", "CORNER")
-    for poly in me.polygons:
-        code = (codes[poly.material_index] + 0.5) / slots
-        for li in poly.loop_indices:
-            shade = 1.0
-            co = me.vertices[me.loops[li].vertex_index].co
-            if codes[poly.material_index] == 0 and co.z > 4.75 and co.y < -.20:
-                x = co.x / HEAD_SCALE.x
-                z = (co.z-HEAD_ANCHOR_Z)/HEAD_SCALE.z+HEAD_ANCHOR_Z-HEAD_CENTER.z
-                if z < -.55: shade = .83
-                elif -.42 < z < -.12 and .25 < abs(x) < .58: shade = .89
-                elif .02 < z < .24 and .12 < abs(x) < .5: shade = .90
-            attr.data[li].color = (code, shade, 0.0, 1.0)
-    me.color_attributes.active_color = attr
-    me.materials.clear()
-    shared = bpy.data.materials.get("Player") or material("Player", (1, 1, 1))
-    me.materials.append(shared)
-
-
-def skinned(obj, rig, rigid=None):
-    weight_mesh(obj, rigid)
-    obj.parent = rig
-    mod = obj.modifiers.new("Armature", "ARMATURE")
-    mod.object = rig
-    return obj
-
-
-def build_baller():
-    reset()
-    rig = build_rig("Baller")
-    mats = [material(n, srgb(c)) for n, c in [
-        ("Skin", "#b87a56"), ("Jersey", "#e2462f"), ("Trim", "#fff3e0"), ("Shorts", "#e2462f"), ("Socks", "#f5f2ea"),
-        ("Shoe", "#1c1f2b"), ("Sole", "#f5f2ea"), ("EyeWhite", "#fbfbf6"), ("Dark", "#1a1214"), ("Hair", "#1b1412"),
-    ]]
-    body_mesh = build_body_mesh(1, player_region, PLAYER_MATS)
-    me = assemble("Body", body_mesh, player_region, PLAYER_MATS)
-    for m in mats:
-        me.materials.append(m)
-    body = link(bpy.data.objects.new("Body", me))
-    skinned(body, rig, rigid_pin)
-    regionize(body, list(range(len(PLAYER_MATS))))
-
-    hair_mat = bpy.data.materials["Hair"]
-    trim_mat = bpy.data.materials["Trim"]
-    for style in ("Buzz", "Afro", "Beard", "Twists"):
-        bm = bmesh.new()
-        HAIR_STYLES[style](bm, 0)
-        scale_head_geometry(list(bm.verts))
-        hm = bpy.data.meshes.new(f"Hair{style}")
-        bm.to_mesh(hm)
-        bm.free()
-        hm.materials.append(hair_mat)
-        hair_obj = skinned(link(bpy.data.objects.new(f"Hair{style}", hm)), rig, lambda co: "head")
-        regionize(hair_obj, [PLAYER_MATS.index("Hair")])
-    bm = bmesh.new()
-    head_shell(bm, 1.06, lambda d: 0.5 < d.z + 0.08 * d.y < 0.64, 0)  # above the brows, dipping at the back
-    scale_head_geometry(list(bm.verts))
-    hm = bpy.data.meshes.new("Headband")
-    bm.to_mesh(hm)
-    bm.free()
-    hm.materials.append(trim_mat)
-    band = skinned(link(bpy.data.objects.new("Headband", hm)), rig, lambda co: "head")
-    regionize(band, [PLAYER_MATS.index("Trim")])
-
-    for name, y, flip in (("NumberFront", -0.585, False), ("NumberBack", 0.575, True)):
-        skinned(number_plate(name, y, flip), rig, lambda co: "chest")
-
-    build_actions(rig)
-    bpy.context.scene.frame_start = 0
-    bpy.context.scene.frame_end = 48
-    return rig
-
-
-def build_fans():
-    reset()
-    rig = build_rig("FanRig")
-    body_mesh = build_body_mesh(0, fan_region, FAN_REGIONS)  # seen from a distance: no subdivision
-    region_mats = [material(n, (1, 1, 1)) for n in FAN_REGIONS]
-    hair_styles = {
-        "Short": HAIR_STYLES["Buzz"],
-        "Afro": HAIR_STYLES["Afro"],
-        "Cap": None,
-    }
-    for pose_name, (pose, hips) in FAN_POSES.items():
-        for hair_name, hair_fn in hair_styles.items():
-            def hair(bm, m, hair_fn=hair_fn, hair_name=hair_name):
-                if hair_fn:
-                    hair_fn(bm, m, True)
-                else:  # baseball cap in the shirt color: dome plus a brim
-                    head_shell(bm, 1.05, lambda d: d.z > 0.25, FAN_REGIONS.index("Shirt"), segs=(12, 8))
-                    add_ellipsoid(bm, at_head(0, -0.8, 0.5), (0.5, 0.42, 0.05), FAN_REGIONS.index("Shirt"), (8, 4), rot=Quaternion((1, 0, 0), math.radians(-12)))
-
-            me = assemble(f"Fan{pose_name}{hair_name}", body_mesh, fan_region, FAN_REGIONS, low_poly=True, hair=hair)
-            for m in region_mats:
-                me.materials.append(m)
-            obj = link(bpy.data.objects.new(f"Fan{pose_name}{hair_name}", me))
-            skinned(obj, rig, rigid_pin)
-            apply_pose(rig, pose, hips)
-            bpy.context.view_layer.update()
-            baked = bake_posed(obj, f"Fan_{pose_name}_{hair_name}")
-            bpy.data.objects.remove(obj)
-            ground_fan(baked, pose_name)
-    bpy.data.objects.remove(rig)
-    return
-
-
-def bake_posed(obj, name):
-    """Evaluate the armature deformation into a plain mesh, with region codes as vertex colors."""
-    depsgraph = bpy.context.evaluated_depsgraph_get()
-    me = bpy.data.meshes.new_from_object(obj.evaluated_get(depsgraph))
-    me.name = name
-    # Region code in the red channel; the app maps it to a per-fan color.
-    attr = me.color_attributes.new("Region", "FLOAT_COLOR", "CORNER")
-    for poly in me.polygons:
-        code = (poly.material_index + 0.5) / 8.0
-        for li in poly.loop_indices:
-            attr.data[li].color = (code, 0.0, 0.0, 1.0)
-    me.color_attributes.active_color = attr
-    # One plain material; the app swaps in its own shader.
-    me.materials.clear()
-    mat = bpy.data.materials.get("FanMat") or material("FanMat", (1, 1, 1))
-    me.materials.append(mat)
-    return link(bpy.data.objects.new(name, me))
-
-
-def ground_fan(obj, pose_name):
-    """Seated fans: origin where the seat touches the bench. Standing fans: origin at the soles."""
-    me = obj.data
-    if pose_name in ("Sit", "Clap", "Card"):
-        # Seat contact = the lowest point of the pelvis area.
-        seat = min(v.co.z for v in me.vertices if abs(v.co.x) < 0.6 and 1.4 < v.co.z < 3.1 and v.co.y > -0.9)
-        offset = Vector((0, 0.0, -seat))
-    else:
-        offset = Vector((0, 0, -min(v.co.z for v in me.vertices)))
-    for v in me.vertices:
-        v.co += offset
-
-
-def export(path, **kw):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    bpy.ops.export_scene.gltf(
-        filepath=path,
-        export_format="GLB",
-        export_apply=True,
-        export_yup=True,
-        export_image_format="AUTO",
-        **kw,
-    )
-    print("EXPORTED", path, os.path.getsize(path))
-
-
-def preview(path, objects_filter=None, frame=None, action=None, rig=None, camera=(6, -14, 5.5), target=(0, 0, 3.4), lens=50):
-    scene = bpy.context.scene
-    if rig and action:
-        rig.animation_data.action = bpy.data.actions[action]
-    if frame is not None:
-        scene.frame_set(frame)
-    world = bpy.data.worlds.new("World")
-    if hasattr(world, "use_nodes"):
-        world.use_nodes = True
-    world.node_tree.nodes["Background"].inputs[0].default_value = (0.55, 0.45, 0.62, 1)
-    world.node_tree.nodes["Background"].inputs[1].default_value = 0.6
-    scene.world = world
-    sun = link(bpy.data.objects.new("Sun", bpy.data.lights.new("Sun", "SUN")))
-    sun.data.energy = 4.0
-    sun.data.color = (1.0, 0.86, 0.7)
-    sun.rotation_euler = (math.radians(50), math.radians(10), math.radians(35))
-    cam = link(bpy.data.objects.new("Cam", bpy.data.cameras.new("Cam")))
-    cam.data.lens = lens
-    cam.location = camera
-    direction = Vector(target) - Vector(camera)
-    cam.rotation_euler = direction.to_track_quat("-Z", "Y").to_euler()
-    scene.camera = cam
-    scene.render.engine = "BLENDER_EEVEE"
-    scene.render.resolution_x = 900
-    scene.render.resolution_y = 900
-    scene.render.film_transparent = False
-    scene.view_settings.view_transform = "AgX"
-    scene.render.filepath = path
-    bpy.ops.render.render(write_still=True)
-    for o in (sun, cam):
-        bpy.data.objects.remove(o)
-    print("PREVIEW", path)
-
-
-def show_hair(style):
-    for name in ("HairBuzz", "HairAfro", "HairBeard", "HairTwists", "Headband"):
-        obj = bpy.data.objects.get(name)
-        if obj:
-            obj.hide_render = name != style and not (style == "Headband" and name == "HairBuzz")
-
-
-def main():
-    rig = build_baller()
-    if PREVIEW_DIR:
-        show_hair("HairBuzz")
-        preview(os.path.join(PREVIEW_DIR, "baller_idle.png"), rig=rig, action="Idle", frame=0)
-        preview(os.path.join(PREVIEW_DIR, "baller_run.png"), rig=rig, action="RunDribble", frame=0, camera=(12, -8, 5), target=(0, 0, 3.2))
-        preview(os.path.join(PREVIEW_DIR, "baller_shoot.png"), rig=rig, action="Shoot", frame=11, camera=(8, -12, 6), target=(0, 0, 4.5))
-        show_hair("Headband")
-        preview(os.path.join(PREVIEW_DIR, "baller_face.png"), rig=rig, action="Idle", frame=0, camera=(2.5, -7, 5.4), target=(0, 0, 5.1), lens=60)
-        rig.animation_data.action = bpy.data.actions["Idle"]
-        bpy.context.scene.frame_set(0)
-        show_hair(None)
-        for o in bpy.data.objects:
-            o.hide_render = False
-    export(os.path.join(OUT_DIR, "baller.glb"), export_animations=True, export_animation_mode="ACTIONS", export_skins=True, export_vertex_color="ACTIVE", export_force_sampling=True, export_optimize_animation_size=False)
-
-    build_fans()
-    if PREVIEW_DIR:
-        # Lay the fans out in a row for a look.
-        fans = [o for o in bpy.context.scene.objects if o.name.startswith("Fan_")]
-        for i, o in enumerate(sorted(fans, key=lambda o: o.name)):
-            o.location = ((i % 5) * 2.6 - 5.2, (i // 5) * 3.0, 0)
-        preview(os.path.join(PREVIEW_DIR, "fans.png"), camera=(0, -26, 10), target=(0, 3, 2), lens=40)
-        for o in fans:
-            o.location = (0, 0, 0)
-    export(os.path.join(OUT_DIR, "fans.glb"), export_animations=False, export_skins=False, export_vertex_color="ACTIVE")
-
-
-main()
+bm=bmesh.new();bm.from_mesh(body.data);tree=BVHTree.FromBMesh(bm);bm.free()
+verts=[];faces=[]
+for side in [-1,1]:
+ start=len(verts)
+ for i in range(13):
+  t=i/12;x=side*(.015+.045*t);z=1.919+.004*math.sin(t*math.pi)-.003*t
+  for dz in [-.0018,.0018]:
+   hit=tree.ray_cast(Vector((x,-1,z+dz)),Vector((0,1,0)),2)[0]
+   verts.append(tuple(hit+Vector((0,-.0025,0))) if hit else (x,-.15,z+dz))
+ for i in range(12):
+  a=start+i*2;faces.append((a+1,a+3,a+2,a) if side<0 else (a,a+2,a+3,a+1))
+me=bpy.data.meshes.new('Eyebrows');me.from_pydata(verts,[],faces);brows=bpy.data.objects.new('Eyebrows',me);scene.collection.objects.link(brows);brows.parent=rig
+vg=brows.vertex_groups.new(name='head');vg.add(range(len(verts)),1,'REPLACE');mod=brows.modifiers.new('Armature','ARMATURE');mod.object=rig;assign(brows,9)
+# A four-influence normalized skin is required on every exported athlete mesh.
+def normalize(o):
+ for v in o.data.vertices:
+  gs=[(g.group,g.weight) for g in v.groups if o.vertex_groups[g.group].name in rig.data.bones and g.weight>1e-5]
+  gs.sort(key=lambda g:-g[1]);keep=gs[:4];total=sum(w for i,w in keep)
+  for idx in [g.group for g in v.groups]:o.vertex_groups[idx].remove([v.index])
+  if total>0:
+   for idx,w in keep:o.vertex_groups[idx].add([v.index],w/total,'REPLACE')
+# Rename right/left hand bones preserves existing browser attachment fallbacks.
+for side in ['l','r']:
+ old='hand_'+side;new='hand.'+side.upper();rig.data.bones[old].name=new
+ for o in bpy.data.objects:
+  if o.type=='MESH' and old in o.vertex_groups:o.vertex_groups[old].name=new
+# Grip bones at the center of a basketball touching the palm. They inherit the true hand pose.
+REST={b.name:b.matrix_local.copy() for b in rig.data.bones}
+PALM={};FINGER={};NORMAL={}
+for side in ['l','r']:
+ hn='hand.'+side.upper();w=rig.data.bones[hn].head_local
+ finger=(rig.data.bones['middle_01_'+side].head_local-w).normalized()
+ across=rig.data.bones['index_01_'+side].head_local-rig.data.bones['pinky_01_'+side].head_local
+ norm=across.cross(finger).normalized()
+ if norm.y<0:norm=-norm
+ PALM[side]=(rig.data.bones['middle_01_'+side].head_local-w)*.57
+ FINGER[side]=finger;NORMAL[side]=norm
+active(rig);bpy.ops.object.mode_set(mode='EDIT')
+for side in ['l','r']:
+ hn='hand.'+side.upper();b=rig.data.edit_bones.new('ballGrip'+side.upper());b.parent=rig.data.edit_bones[hn]
+ b.head=b.parent.head+PALM[side]+NORMAL[side]*RADIUS;b.tail=b.head+Vector((0,0,.025));b.use_deform=False
+bpy.ops.object.mode_set(mode='OBJECT')
+rig.scale=(SCALE,)*3
+for p in rig.pose.bones:p.rotation_mode='QUATERNION'
+REST={b.name:b.matrix_local.copy() for b in rig.data.bones}
+# Reduce invisible anatomy while retaining real hand topology. No simplification of facial mesh.
+for o in [body,jersey,shorts,socks,shoes,eyes,brows]+hair:normalize(o)
+# Preserve UVs + region attribute. Runtime skin tones multiply the artist material shading.
+def regionize(o,fan=False):
+ me=o.data
+ if me.color_attributes.get('Region'):me.color_attributes.remove(me.color_attributes['Region'])
+ attr=me.color_attributes.new(name='Region',type='FLOAT_COLOR',domain='CORNER')
+ for p in me.polygons:
+  reg=p.material_index
+  for li in p.loop_indices:
+   co=me.vertices[me.loops[li].vertex_index].co;shade=1.
+   if reg==0:
+    if 1.80<co.z<1.88 and co.y<-.08:shade=.85
+    if 1.86<co.z<1.895 and .027<abs(co.x)<.070 and co.y<-.07:shade=.80
+    if 1.805<co.z<1.826 and abs(co.x)<.038 and co.y<-.10:shade=.61
+   if reg in [1,3]:shade=.95+.045*math.sin(co.z*85+co.x*60)*math.sin(co.x*39)
+   if reg==9:shade=.82+.18*math.sin(co.x*530+co.y*290)**2
+   if fan:reg={0:0,1:1,2:1,3:2,4:2,5:4,6:7,7:5,8:6,9:3}[reg]
+   attr.data[li].color=((reg+.5)/(8 if fan else 16),shade,0,1)
+ me.color_attributes.active_color=attr
+ me.materials.clear();me.materials.append(material('FanPalette' if fan else 'PlayerPalette',(1,1,1)))
+# Animation uses world-space two-bone IK with explicit planted feet and smooth weight transfer.
+def reset_pose():
+ for pb in rig.pose.bones:pb.matrix_basis=Matrix.Identity(4)
+ bpy.context.view_layer.update()
+def aim(name,target):
+ pb=rig.pose.bones[name];h=pb.head.copy();q=(pb.tail-h).rotation_difference(Vector(target)-h)
+ pb.matrix=Matrix.Translation(h)@q.to_matrix().to_4x4()@Matrix.Translation(-h)@pb.matrix
+ bpy.context.view_layer.update()
+def two(upper,lower,target,pole):
+ a=rig.pose.bones[upper].head.copy();v=Vector(target)-a;l1=rig.data.bones[upper].length;l2=rig.data.bones[lower].length
+ dist=max(.02,min(v.length,l1+l2-.001));u=v.normalized();pv=Vector(pole)-a;n=(pv-u*pv.dot(u)).normalized()
+ d=(l1*l1-l2*l2+dist*dist)/(2*dist);j=a+u*d+n*math.sqrt(max(0,l1*l1-d*d))
+ aim(upper,j);aim(lower,a+u*dist)
+def hand(side,ball,fd=(0,-1,0),pn=(0,0,-1)):
+ fd=Vector(fd).normalized();pn=Vector(pn);pn=(pn-fd*pn.dot(fd)).normalized()
+ q=FINGER[side].rotation_difference(fd);normal=q@NORMAL[side]
+ angle=math.atan2(fd.dot(normal.cross(pn)),normal.dot(pn));q=Quaternion(fd,angle)@q
+ wrist=Vector(ball)-q@PALM[side]-pn*RADIUS
+ sign=1 if side=='l' else -1
+ two('upperarm_'+side,'lowerarm_'+side,wrist,(sign*.48,.08,1.26))
+ hn='hand.'+side.upper();actual=rig.pose.bones[hn].head.copy();rig.pose.bones[hn].matrix=Matrix.Translation(actual)@q.to_matrix().to_4x4()@REST[hn].to_3x3().to_4x4()
+ bpy.context.view_layer.update()
+def smoothkeys(keys,t):
+ if t<=keys[0][0]:return Vector(keys[0][1])
+ for (ta,a),(tb,b) in zip(keys,keys[1:]):
+  if ta<=t<=tb:
+   u=(t-ta)/(tb-ta);u=u*u*(3-2*u);return Vector(a).lerp(Vector(b),u)
+ return Vector(keys[-1][1])
+def pose(kind,t):
+ reset_pose();p=rig.pose.bones;s=math.sin(t*math.tau)
+ hip=-.07;hop=0;lean=.035;spread=.225;lefty=.015;righty=.015;leftz=.088;rightz=.088
+ ball=Vector((-.37,-.36,1.17));other=Vector((.37,-.22,1.13));fd=(0,-1,0);pn=(0,0,-1)
+ if kind in ['Run','RunDribble']:
+  hip=-.225+.025*math.cos(t*math.tau*2);lean=.12
+  # Linear backward ground travel is the stance. The return lifts clear of the court.
+  for side,phase in [('l',t),('r',(t+.5)%1)]:
+   u=phase%1
+   if u<.5:y=-.62+2.48*u;z=.088
+   else:v=(u-.5)*2;y=.62-1.24*(v*v*(3-2*v));z=.088+.23*math.sin(v*math.pi)
+   if side=='l':lefty,leftz=y,z
+   else:righty,rightz=y,z
+  ball=Vector((-.30,-.29+.10*s,1.21));other=Vector((.29,-.27-.10*s,1.21))
+ if kind in ['IdleDribble','RunDribble','Crossover']:
+  ball=Vector((-.38,-.36,1.08+.16*(.5-.5*math.cos(t*math.tau))))
+  other=Vector((.28,-.21,1.18));hip-=.03
+  if kind=='Crossover':ball.x=-.37+.70*(.5-.5*math.cos(t*math.tau));lean=.08
+ if kind in ['Defend','Shuffle']:
+  hip=-.22;lean=.11;spread=.35
+  ball=Vector((-.52,-.28,1.22));other=Vector((.52,-.28,1.22))
+  if kind=='Shuffle':lean=.08
+ if kind in ['Pass','Catch']:
+  u=t if kind=='Pass' else 1-t
+  ball=smoothkeys([(0,(-.10,-.39,1.28)),(.208,(-.06,-.67,1.36)),(.40,(-.03,-.72,1.39)),(1,(-.28,-.30,1.19))],u)
+  ball.x=0;other=ball.copy();fd=(0,-1,.1);pn=(1,0,.1);hip-=.04*math.sin(t*math.pi)
+ if kind=='Shoot':
+  ball=smoothkeys([(0,(-.12,-.40,1.28)),(.32,(-.10,-.25,1.67)),(.5833,(-.10,-.34,2.06)),(.75,(-.10,-.39,2.08)),(1,(-.27,-.28,1.36))],t)
+  other=ball.copy();fd=(0,-1,.1);pn=(0,.1,1)
+  hop=.10*math.sin(min(1,max(0,(t-.27)/.65))*math.pi);hip=-.07-.10*math.sin(min(t/.3,1)*math.pi)+hop
+ if kind in ['Jump','Rebound','Dunk']:
+  # A high-elevation running dunk at apex for a 6'4" athlete, with knee compression on landing.
+  if kind=='Dunk':
+   hop=smoothkeys([(0,(0,0,0)),(.2,(0,0,-.18)),(.56,(0,0,.69)),(.75,(0,0,1.235)),(.87,(0,0,.78)),(1,(0,0,0))],t).z
+   ball=smoothkeys([(0,(-.28,-.36,1.24)),(.28,(-.20,-.24,1.70)),(.56,(-.12,-.25,2.18)),(.75,(-.10,-.43,2.28)),(.88,(-.10,-.46,2.09)),(1,(-.25,-.28,1.33))],t)+Vector((0,0,hop))
+   other=Vector((.31,-.20,1.44+hop));fd=(0,-1,0);pn=(0,0,-1)
+  else:
+   hop=.49*math.sin(t*math.pi);ball=Vector((-.18,-.30,1.86+hop));other=Vector((.18,-.30,1.86+hop));fd=(0,-1,.2);pn=(0,0,1)
+  hip=-.07+hop
+  if hop>0:leftz+=hop;rightz+=hop
+ if kind=='Land':
+  hip=-.07-.21*math.sin(t*math.pi);lean=.16*math.sin(t*math.pi);ball.z-=.1*math.sin(t*math.pi);other.z-=.1*math.sin(t*math.pi)
+ if kind=='Celebrate':
+  ball=Vector((-.39,-.20,1.88+.04*s));other=Vector((.39,-.20,1.88-.04*s));hip=-.065+.025*s;fd=(0,0,1);pn=(0,-1,0)
+ if kind in ['Sit','Clap','Card']:
+  hip=-.05;lefty=righty=-.50;leftz=rightz=.61
+  ball=Vector((-.25,-.47,1.17));other=Vector((.25,-.47,1.17))
+  if kind=='Clap':ball=Vector((-.075,-.46,1.40));other=Vector((.075,-.46,1.40));pn=(1,0,0)
+  if kind=='Card':ball=Vector((-.28,-.45,1.56));other=Vector((.28,-.45,1.56));pn=(1,0,0)
+ # Pelvis local matrix translation is a world vector, not its tilted local axis.
+ p['pelvis'].matrix=Matrix.Translation((.014*s if kind in ['Idle','IdleDribble'] else 0,0,hip))@REST['pelvis']
+ p['spine_01'].rotation_quaternion=Euler((lean,0,.018*s if kind=='Idle' else 0),'XYZ').to_quaternion()
+ bpy.context.view_layer.update()
+ leftx,rightx=spread,-spread
+ if kind=='Shuffle':
+  for side,phase in [('l',t),('r',(t+.5)%1)]:
+   u=phase%1
+   if u<.5:x=.20-.8*u;z=.088
+   else:v=(u-.5)*2;x=-.20+.40*(v*v*(3-2*v));z=.088+.065*math.sin(v*math.pi)
+   if side=='l':leftx,leftz=spread+x,z
+   else:rightx,rightz=-spread+x,z
+ two('thigh_l','calf_l',(leftx,lefty,leftz),(.30,-.8,.60+hop))
+ two('thigh_r','calf_r',(rightx,righty,rightz),(-.30,-.8,.60+hop))
+ for side in ['l','r']:
+  foot=p['foot_'+side];foot.matrix=Matrix.Translation(foot.head)@REST['foot_'+side].to_3x3().to_4x4()
+ bpy.context.view_layer.update()
+ hand('r',ball,fd,pn)
+ if kind=='Shoot':hand('l',other,(0,0,1),(-1,0,0))
+ else:hand('l',other,fd,(-pn[0],pn[1],pn[2]))
+ # Athletic relaxed fingers curve around the ball, using all 30 real finger joints.
+ for pb in p:
+  if any(pb.name.startswith(a) for a in ['index_','middle_','ring_','pinky_']):
+   angle=.14 if kind in ['Run','Defend','Shuffle'] else .25
+   if '_03_' in pb.name:angle*=.5
+   pb.rotation_quaternion=Euler((angle,0,0),'XYZ').to_quaternion()
+ bpy.context.view_layer.update()
+
+DURATIONS={'Idle':48,'Run':20,'RunDribble':20,'IdleDribble':24,'Defend':32,'Shuffle':24,'Crossover':24,'Pass':24,'Catch':20,'Shoot':24,'Jump':24,'Dunk':24,'Land':18,'Rebound':26,'Celebrate':32}
+for name,frames in DURATIONS.items():
+ rig.animation_data_create();act=bpy.data.actions.new(name);rig.animation_data.action=act;act.use_fake_user=True
+ for f in range(frames+1):
+  scene.frame_set(f);pose(name,f/frames)
+  for pb in rig.pose.bones:
+   pb.keyframe_insert('rotation_quaternion',frame=f,group=pb.name);pb.keyframe_insert('location',frame=f,group=pb.name)
+ print('ANIMATION',name,frames,flush=True)
+rig.animation_data.action=None;reset_pose()
+# All pieces except optional hair are one draw call. Preserve face morphs on the main body.
+active(body)
+for o in [jersey,shorts,socks,shoes,eyes,brows]:o.select_set(True)
+bpy.ops.object.join();body.name='AthleteBody'
+# Number plates are small cloth decals bound to upper torso, separated for team typography.
+def number(name,back):
+ y=.145 if back else -.183;z=1.345;w=.16;h=.18
+ me=bpy.data.meshes.new(name);me.from_pydata([(-w/2,y,z-h/2),(w/2,y,z-h/2),(w/2,y,z+h/2),(-w/2,y,z+h/2)],[],[(3,2,1,0) if back else (0,1,2,3)])
+ uv=me.uv_layers.new(name='UVMap')
+ for li,loop in enumerate(me.loops):
+  co=me.vertices[loop.vertex_index].co;uv.data[li].uv=((.5-co.x/w) if back else (.5+co.x/w),.5+(co.z-z)/h)
+ o=bpy.data.objects.new(name,me);scene.collection.objects.link(o);o.parent=rig
+ vg=o.vertex_groups.new(name='spine_02');vg.add(range(4),1,'REPLACE');mod=o.modifiers.new('Armature','ARMATURE');mod.object=rig
+ o.data.materials.append(material(name,(1,1,1)))
+ return o
+numbers=[number('NumberFront',False),number('NumberBack',True)]
+# Save editable authored asset before region conversion for QA and future art work.
+os.makedirs(OUT,exist_ok=True);os.makedirs(os.path.join(HERE,'../work/athlete'),exist_ok=True)
+bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE,'../work/athlete/adult-athlete-authored.blend'))
+player_meshes=[body]+hair+numbers
+for o in [body]+hair:regionize(o)
+active(rig)
+for o in player_meshes:o.select_set(True)
+scene.frame_start=0;scene.frame_end=48
+bpy.ops.export_scene.gltf(filepath=os.path.join(OUT,'baller.glb'),export_format='GLB',use_selection=True,export_yup=True,export_apply=False,export_animations=True,export_animation_mode='ACTIONS',export_skins=True,export_vertex_color='ACTIVE',export_force_sampling=True,export_optimize_animation_size=True,export_morph=True)
+# Static crowd LOD from the same continuous anatomy, baked in five natural body poses.
+# 15 instanced batches; ~1,000 triangles per fan, no runtime skeleton on crowd.
+for o in numbers:o.hide_render=True
+fanobjs=[]
+for pn in ['Sit','Clap','Card','Cheer','Stand']:
+ pose({'Cheer':'Celebrate','Stand':'Idle'}.get(pn,pn),.33)
+ for style,ho in [('Short',hair[0]),('Afro',hair[1]),('Cap',headband)]:
+  deps=bpy.context.evaluated_depsgraph_get();parts=[]
+  for src in [body,ho]:
+   me=bpy.data.meshes.new_from_object(src.evaluated_get(deps));o=bpy.data.objects.new('CrowdPart',me);scene.collection.objects.link(o);o.matrix_world=src.matrix_world;parts.append(o)
+  active(parts[0]);parts[1].select_set(True);bpy.ops.object.join();o=parts[0];o.name='Fan_'+pn+'_'+style
+  # Convert original region codes before collapse; RGB red indexes the crowd palette.
+  a=o.data.color_attributes.get('Region')
+  if a:
+   for c in a.data:
+    r=int(c.color[0]*16);fr={0:0,1:1,2:1,3:2,4:2,5:4,6:7,7:5,8:6,9:3}.get(r,0);c.color=((fr+.5)/8,c.color[1],0,1)
+  o.data.materials.clear();o.data.materials.append(MATS[0])
+  for poly in o.data.polygons:poly.material_index=0
+  dec=o.modifiers.new('Crowd LOD','DECIMATE');dec.ratio=.04;dec.use_collapse_triangulate=True;bpy.ops.object.modifier_apply(modifier=dec.name)
+  # Ground standing soles; seated origin is the seat-contact point at pelvis.
+  offset=3.12 if pn in ['Sit','Clap','Card'] else min((o.matrix_world@v.co).z for v in o.data.vertices)
+  bpy.ops.object.transform_apply(location=False,rotation=False,scale=True)
+  for v in o.data.vertices:v.co.z-=offset
+  fanobjs.append(o)
+active(fanobjs[0])
+for o in fanobjs:o.select_set(True)
+bpy.ops.export_scene.gltf(filepath=os.path.join(OUT,'fans.glb'),export_format='GLB',use_selection=True,export_yup=True,export_apply=True,export_animations=False,export_skins=False,export_vertex_color='ACTIVE')
+# Mesh and socket data are measurable, useful to the browser integration and QA.
+reset_pose();pose('Dunk',.75)
+report={'source':'MakeHuman continuous hm08 mesh / MPFB game_engine rig','heightFeet':6.35,'bones':len(rig.data.bones),'clips':DURATIONS,'meshes':{},'dunkGripWorldFeet':list(rig.matrix_world@rig.pose.bones['ballGripR'].head),'scale':SCALE}
+for o in player_meshes:
+ o.data.calc_loop_triangles();report['meshes'][o.name]={'vertices':len(o.data.vertices),'triangles':len(o.data.loop_triangles),'morphs':[k.name for k in o.data.shape_keys.key_blocks] if o.data.shape_keys else []}
+report['fans']={o.name:len(o.data.polygons) for o in fanobjs}
+json.dump(report,open(os.path.join(HERE,'../work/athlete/asset-report.json'),'w'),indent=2)
+print(json.dumps(report),flush=True)
+if PREVIEW:
+ # Render the actual same authored mesh/rig in two animation contact poses.
+ os.makedirs(PREVIEW,exist_ok=True)
+ for o in fanobjs:bpy.data.objects.remove(o,do_unlink=True)
+ for o in player_meshes:o.hide_render=o in hair[1:] or o in numbers
+ # Restore preview materials from vertex palette without changing GLB.
+ for o in [body,hair[0]]:
+  attr=o.data.color_attributes['Region'];o.data.materials.clear()
+  for m in MATS:o.data.materials.append(m)
+  for p in o.data.polygons:p.material_index=min(9,int(attr.data[p.loop_start].color[0]*16))
+ scene.render.engine='BLENDER_WORKBENCH';scene.display.shading.light='STUDIO';scene.display.shading.color_type='MATERIAL';scene.display.shading.show_shadows=True;scene.display.shading.show_cavity=True;scene.render.resolution_x=1000;scene.render.resolution_y=1200;scene.render.resolution_percentage=100
+ scene.world=bpy.data.worlds.new('Athlete QA world');scene.world.color=(.16,.16,.16);scene.view_settings.view_transform='AgX'
+ bpy.ops.mesh.primitive_plane_add(size=200);floor=bpy.context.object;floor.data.materials.append(material('Floor',(.08,.105,.1)))
+ def point(o,p):o.rotation_euler=(Vector(p)-o.location).to_track_quat('-Z','Y').to_euler()
+ for loc,power,size in [((-6,-9,13),1400,7),((6,3,10),1800,5),((5,-5,5),500,5)]:
+  bpy.ops.object.light_add(type='AREA',location=loc);l=bpy.context.object;l.data.energy=power;l.data.shape='DISK';l.data.size=size;point(l,(0,0,3))
+ bpy.ops.object.camera_add(location=(7,-15,6));cam=bpy.context.object;cam.data.lens=63;point(cam,(0,0,3.3));scene.camera=cam
+ for nm,t in [('IdleDribble',.5),('Shoot',.5833),('Defend',.33)]:
+  pose(nm,t);scene.render.filepath=os.path.join(PREVIEW,'athlete-'+nm.lower()+'.png');bpy.ops.render.render(write_still=True)
+print('ADULT_ATHLETES_EXPORTED',flush=True)

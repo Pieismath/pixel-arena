@@ -1,0 +1,18 @@
+# Exported from MakeClothes (TM)
+# author punkduck
+# license CC  BY 3.0
+# homepage http://www.makehuman.org/
+uuid 6d72ef6a-7827-49fe-8af4-26824e4bdd8c
+basemesh hm08
+tag Shoes
+tag Sport
+
+name TennisShoes
+version 110
+obj_file tennisshoes.obj
+x_scale 5399 11998 1.3980
+z_scale 962 5320 1.8441
+y_scale 791 881 2.2028
+z_depth 45
+max_pole 5
+material tennisshoes.mhmat

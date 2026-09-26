@@ -1,0 +1,18 @@
+# Exported from MakeClothes (TM)
+# author Joel Palmius
+# license CC0
+# homepage http://www.makehumancommunity.org/
+uuid 53ee0956-c172-447b-8f8c-fb2c4cd30c44
+basemesh hm08
+
+name CrudeHighSocks
+obj_file crudehighsocks.obj
+x_scale 5399 11998 1.4800
+z_scale 962 5320 1.9221
+y_scale 791 881 2.3298
+z_depth 50
+material crudehighsocks.mhmat
+verts 0
+ 4946  4941  6161 1.25819 -0.00047 -0.25772 -0.05038 -0.07829 0.08394
+ 5012  5009  6489 0.91959 0.77119 -0.69078 -0.01715 -0.05520 0.08246
+ 6479  6551  5895 0.90950 -0.22169 0.31219 -0.01395 -0.02863 0.15629

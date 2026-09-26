@@ -1,0 +1,18 @@
+# Exported from MakeClothes (TM)
+# author Elvaerwyn
+# license CC-by
+# homepage http://www.makehuman.org/
+uuid 9f77bb95-bcb6-42e8-8472-8ba4ceffca88
+basemesh hm08
+
+name elvs_male_shorts1
+obj_file elvs_male_shorts1.obj
+x_scale 11133 11141 1.4763
+z_scale 11130 11135 1.5612
+y_scale 11025 11460 7.4151
+z_depth 50
+max_pole 5
+material elvs_male_shorts1.mhmat
+verts 0
+ 4294  4288  4225 0.01186 0.00573 0.98241 -0.04512 0.00910 -0.03496
+ 4243  4234  4242 0.46148 0.39557 0.14295 -0.10311 -0.00436 -0.13394

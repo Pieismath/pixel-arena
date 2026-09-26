@@ -1,0 +1,18 @@
+# This is a clothes file for MakeHuman Community, exported by MakeClothes 2
+#
+# author: Namuhekam
+# license: CC0
+#
+# description: Basic polo shirt. Use subdivision to get better results.
+#
+basemesh hm08
+
+# Basic info:
+name Polo t-shirt
+tag male
+tag casual
+tag profession
+tag contemporary
+obj_file Polo_t-shirt.obj
+material Polo_t-shirt.mhmat
+
