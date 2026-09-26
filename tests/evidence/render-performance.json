@@ -1,0 +1,44 @@
+{
+  "date": "2026-09-26",
+  "hardware": "Apple M5, 16 GB RAM",
+  "browser": "Codex in-app Chromium browser",
+  "method": "30-second visible requestAnimationFrame sample after 8-second warmup; actual Three.js production page; all frame stalls retained. Quality forced for stable comparison.",
+  "desktop": {
+    "status": "complete",
+    "seconds": 30.03,
+    "frames": 901,
+    "fps": 30,
+    "medianMs": 33.1,
+    "p95Ms": 35,
+    "meanDraws": 568,
+    "meanTriangles": 2814873,
+    "quality": "high",
+    "viewport": [
+      1440,
+      900
+    ],
+    "pixelRatio": 1
+  },
+  "responsiveViewport": {
+    "status": "complete",
+    "seconds": 30.03,
+    "frames": 901,
+    "fps": 30,
+    "medianMs": 33.1,
+    "p95Ms": 34.8,
+    "meanDraws": 269,
+    "meanTriangles": 1410332,
+    "quality": "low",
+    "viewport": [
+      390,
+      844
+    ],
+    "pixelRatio": 1
+  },
+  "limitations": "Both measured on the same Mac. Responsive viewport is not physical iOS/Android testing. These samples measure browser presentation cadence, not isolated GPU time.",
+  "adaptiveGraphicsRegression": {
+    "before": "Both automatic quality steps reproduced environment disappearing after shadow texture disposal.",
+    "fix": "Disable sun.castShadow and invalidate scene materials before disposing shadow texture.",
+    "after": "Same two downgrade actions preserved the full environment and persistent ball."
+  }
+}

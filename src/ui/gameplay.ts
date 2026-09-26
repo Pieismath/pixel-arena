@@ -24,7 +24,7 @@ export function createGameplay(game: GameSim, follow: () => void) {
     play.setAttribute('aria-pressed', String(manual));
     pad.hidden = !manual;
     document.body.classList.toggle('playing', manual);
-    status.textContent = manual ? 'WASD / arrows to move · Space to shoot · E pass · Q crossover' : 'PICKUP GAME · AUTOPLAY';
+    status.textContent = manual ? (innerWidth < 700 ? 'Move with the pad · Pass, shoot, or cross over' : 'WASD / arrows to move · Space to shoot · E pass · Q crossover') : 'PICKUP GAME · AUTOPLAY';
     if (manual) { document.body.classList.remove('show-spots'); document.getElementById('btn-spots')!.setAttribute('aria-expanded', 'false'); follow(); }
   }
   play.addEventListener('click', toggle);

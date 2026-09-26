@@ -61,7 +61,7 @@ Options can be combined, for example `http://localhost:5190/?demo=1&view=courtsi
 |---|---|
 | `demo=1` / `demo=0` | Start with fictional demo brands or the empty preview. Overrides the saved Demo preference for that load. |
 | `quality=high` / `quality=low` | Force a graphics tier and disable automatic quality reduction. |
-| `view=overview` / `view=courtside` / `view=crowd` | Choose the initial camera view. Overview is the default. |
+| `view=overview` / `view=courtside` / `view=crowd` | Choose the initial camera view. Desktop starts in Overview; portrait screens start Courtside. |
 | `highlight=1` | Start a highlight on load. |
 | `trailer=1` | Start in cinematic mode. |
 | `inspect=1` | Show a 30-second frame-time sample after warm-up: FPS, median/p95 time, draw calls, triangles, viewport and quality. Use a forced quality tier for comparisons. |

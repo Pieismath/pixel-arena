@@ -261,7 +261,7 @@ async function main() {
     wantTarget.y = dunk ? 8 : Math.max(4, subject.y);
     wantPos.set(
       THREE.MathUtils.clamp(subject.x + dir * (dunk ? -8 : game.cinematicMode === 'drive' ? -5 : 11) * distance, -54, 54),
-      dunk ? 11 : 7.5,
+      dunk ? 11 : 9,
       subject.z + (dunk ? 23 : 18) * distance,
     );
   }
@@ -378,7 +378,25 @@ async function main() {
   ui.render(state);
   const gameplay = createGameplay(game, () => setView('courtside'));
   const recording = createRecording(canvas, ui.showToast);
-  const diagnostics = createDiagnostics(game, renderer, () => post.quality);
+  function disableShadows() {
+    if (!renderer.shadowMap.enabled) return;
+    renderer.shadowMap.enabled = false;
+    sun.castShadow = false;
+    // Changing shadowMap.enabled alone does not invalidate compiled USE_SHADOWMAP
+    // variants. Recompile before releasing their texture, or they sample freed data.
+    scene.traverse(object => {
+      const material = (object as THREE.Mesh).material;
+      if (material) for (const entry of Array.isArray(material) ? material : [material]) entry.needsUpdate = true;
+    });
+  }
+  function lowerGraphics() {
+    if (post.quality === 'low') disableShadows();
+    post.degrade();
+    sun.shadow.mapSize.set(1024, 1024);
+    sun.shadow.map?.dispose();
+    sun.shadow.map = null;
+  }
+  const diagnostics = createDiagnostics(game, renderer, () => post.quality, lowerGraphics, disableShadows);
 
   game.onScore = (team, points) => {
     park.flashScore(team, points);
@@ -492,7 +510,7 @@ async function main() {
     showFallback('The graphics connection paused. Reload to return to the court.');
   });
   canvas.addEventListener('webglcontextrestored', () => location.reload());
-  const startView = params.get('view');
+  const startView = params.get('view') ?? (isPortrait() ? 'courtside' : 'overview');
   if (startView === 'courtside' || startView === 'crowd') setView(startView);
   if (params.get('highlight') === '1') playHighlight();
   if (params.get('trailer') === '1') toggleTrailer();
@@ -534,12 +552,9 @@ async function main() {
       sampleTime += rawDt;
       sampleFrames++;
       if (sampleTime > 4) {
-        if (sampleFrames / sampleTime < 32) {
-          if (post.quality === 'low') renderer.shadowMap.enabled = false;
-          post.degrade();
-          sun.shadow.mapSize.set(1024, 1024);
-          sun.shadow.map?.dispose();
-          sun.shadow.map = null;
+        // A stable 30 Hz presentation cadence is playable; degrade only below it.
+        if (sampleFrames / sampleTime < 28) {
+          lowerGraphics();
           adaptations++;
         } else adaptations = 2;
         sampleTime = 0;

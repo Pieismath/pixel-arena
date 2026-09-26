@@ -2,7 +2,7 @@ import type * as THREE from 'three';
 import type { GameSim } from '../world/players';
 
 /** Optional, visible audit surface. It exercises the same public action paths as gameplay. */
-export function createDiagnostics(game: GameSim, renderer: THREE.WebGLRenderer, quality: () => string) {
+export function createDiagnostics(game: GameSim, renderer: THREE.WebGLRenderer, quality: () => string, lowerGraphics: () => void, disableShadows: () => void) {
   const params = new URLSearchParams(location.search);
   if (!params.has('inspect') && !params.has('audit')) return { frame(_dt: number, _elapsed: number) {} };
   const container = document.createElement('aside'); container.id = 'audit-panel';
@@ -15,6 +15,7 @@ export function createDiagnostics(game: GameSim, renderer: THREE.WebGLRenderer, 
       const button = document.createElement('button'); button.textContent = scenario;
       button.addEventListener('click', () => game.runQaScenario(scenario)); actions.append(button);
     });
+    for (const [label, action] of [['Lower graphics', lowerGraphics], ['Disable shadows', disableShadows]] as const) { const button = document.createElement('button'); button.textContent = label; button.addEventListener('click', action); actions.append(button); }
     container.append(actions,ball);
   }
   document.body.append(container);
@@ -24,8 +25,8 @@ export function createDiagnostics(game: GameSim, renderer: THREE.WebGLRenderer, 
   let tier = ''; 
   return {
     frame(dt: number, elapsed: number) {
-      const currentTier = `${quality()}/${renderer.getPixelRatio()}/${renderer.shadowMap.enabled}`;
-      if (tier !== currentTier) { samples.length = 0; collected = drawCalls = triangles = 0; tier = currentTier; }
+      const currentTier = `${quality()}/${renderer.getPixelRatio()}/${renderer.shadowMap.enabled}/${innerWidth}/${innerHeight}`;
+      if (tier !== currentTier) { samples.length = 0; collected = drawCalls = triangles = 0; tier = currentTier; benchmark.textContent = ''; }
       if (elapsed > 8 && collected < 30 && dt > 0) {
         samples.push(dt * 1000); collected += dt;
         drawCalls += renderer.info.render.calls; triangles += renderer.info.render.triangles;

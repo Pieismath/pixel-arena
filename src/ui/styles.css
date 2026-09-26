@@ -298,3 +298,5 @@ h1 { font-family: 'Inter', sans-serif; font-size: clamp(24px, 2.6vw, 37px); lett
 }
 
 @media (max-width:700px) { .view-button { min-height:40px; } .show-spots #btn-demo, .show-spots #btn-leaders { display:block; } }
+
+@media (max-width:700px) { .chips { top:98px; } .ball-actions small { display:none; } }
