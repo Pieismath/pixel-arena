@@ -17,47 +17,48 @@
     {
       "name": "NORTH",
       "side": -1,
-      "rows": 12,
-      "seats": 44
+      "rows": 6,
+      "seats": 40
     },
     {
       "name": "SOUTH",
       "side": 1,
-      "rows": 8,
-      "seats": 44
+      "rows": 4,
+      "seats": 40
     }
   ],
   "bleacherShape": {
-    "front": 37.5,
-    "rowDepth": 2.4,
-    "rowRise": 1.35,
+    "front": 31.8,
+    "rowDepth": 2.3,
+    "rowRise": 1.2,
     "firstHeight": 1.6,
-    "seatSpacing": 2.0
+    "seatSpacing": 2.0,
+    "aisleWidth": 4
   },
   "barrier": {
-    "z": 34.5,
-    "height": 3.2,
-    "length": 92
+    "z": 29,
+    "height": 2.8,
+    "length": 86
   },
   "sidelineBanners": {
     "perSide": 8,
-    "length": 10.6,
-    "height": 2.4,
-    "y": 1.7
+    "length": 5.4,
+    "height": 1.7,
+    "y": 0.9
   },
   "endBanners": {
     "perEnd": 4,
-    "x": 62,
-    "length": 11,
-    "height": 4,
-    "y": 5.5,
-    "gap": 1
+    "x": 58,
+    "length": 5,
+    "height": 2.2,
+    "y": 2.5,
+    "gap": 1.3
   },
   "fence": {
-    "x": 62,
-    "north": -68,
-    "south": 60,
-    "height": 12
+    "x": 58,
+    "north": -50,
+    "south": 46,
+    "height": 11
   },
   "hoop": {
     "poleX": 50.5,
@@ -65,76 +66,77 @@
   },
   "murals": [
     {
-      "x": -74,
-      "z": -26,
-      "width": 22,
-      "height": 13,
-      "y": 4,
+      "x": -58,
+      "z": -32,
+      "width": 6,
+      "height": 3,
+      "y": 3.0,
       "facing": "+x"
     },
     {
-      "x": -74,
-      "z": 0,
-      "width": 22,
-      "height": 13,
-      "y": 4,
+      "x": -58,
+      "z": -22,
+      "width": 6,
+      "height": 3,
+      "y": 3.0,
       "facing": "+x"
     },
     {
-      "x": -74,
-      "z": 26,
-      "width": 22,
-      "height": 13,
-      "y": 4,
+      "x": -58,
+      "z": 22,
+      "width": 6,
+      "height": 3,
+      "y": 3.0,
       "facing": "+x"
     },
     {
-      "x": 78,
-      "z": -16,
-      "width": 24,
-      "height": 14,
-      "y": 6,
+      "x": 58,
+      "z": -32,
+      "width": 6,
+      "height": 3,
+      "y": 3.0,
       "facing": "-x"
     },
     {
-      "x": 78,
-      "z": 16,
-      "width": 24,
-      "height": 14,
-      "y": 6,
+      "x": 58,
+      "z": 32,
+      "width": 6,
+      "height": 3,
+      "y": 3.0,
       "facing": "-x"
     }
   ],
   "screen": {
     "x": 0,
-    "y": 40,
-    "z": -80,
-    "width": 38,
-    "height": 21.4
+    "y": 14.5,
+    "z": -47.8,
+    "width": 15,
+    "height": 7.6
   },
   "namingSign": {
     "x": 0,
-    "y": 57,
-    "z": -80,
-    "width": 64,
-    "height": 8
+    "y": 19.8,
+    "z": -47.8,
+    "width": 15,
+    "height": 2.5
   },
   "lights": [
     [
-      -58,
-      -44
+      -50,
+      -45
     ],
     [
-      58,
-      -44
+      50,
+      -45
     ],
     [
-      -58,
-      44
+      -50,
+      42
     ],
     [
-      58,
-      44
+      50,
+      42
     ]
-  ]
+  ],
+  "_reference": "October 2021 reopening. NBPA Jon Lopez photographs 2021-10-06/08. Court art interpreted with original marks; no sponsor marks reproduced."
 }

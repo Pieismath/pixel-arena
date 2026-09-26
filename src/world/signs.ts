@@ -62,19 +62,40 @@ export class CourtPainter extends Painted {
     const rnd = mulberry32(21);
     const hl = COURT.length / 2;
     const hw = COURT.width / 2;
-    ctx.fillStyle = '#354752';
+    ctx.fillStyle = '#252d2d';
     ctx.fillRect(0, 0, this.w, this.h);
-    ctx.fillStyle = '#98677e';
+    ctx.fillStyle = '#c6aa7b';
     ctx.fillRect(this.X(-hl), this.Z(-hw), COURT.length * PX, COURT.width * PX);
-    // A contrasting faded teal key makes both baskets legible in the wide shot.
-    for (const s of [1, -1]) {
-      const xa = this.X(s * hl);
-      const xb = this.X(s * (hl - 19));
-      ctx.fillStyle = '#3d7775';
-      ctx.fillRect(Math.min(xa, xb), this.Z(-8), Math.abs(xb - xa), 16 * PX);
-      ctx.fillStyle = '#deb982';
-      ctx.fillRect(this.X(s < 0 ? -hl - 0.85 : hl + 0.45), this.Z(-hw), 0.4 * PX, COURT.width * PX);
+    // October 2021 reopening palette. Original abstract lozenges evoke the photographed
+    // charcoal mural rhythm without copying artist lettering, sponsor marks or logos.
+    ctx.save();
+    ctx.beginPath(); ctx.rect(this.X(-hl), this.Z(-hw), COURT.length * PX, COURT.width * PX); ctx.clip();
+    for (const side of [-1, 1]) {
+      for (let row = 0; row < 9; row++) {
+        for (let col = 0; col < 4; col++) {
+          const x = side * (31 + col * 5.3 + (row % 2) * 0.8);
+          const z = -23 + row * 5.8;
+          ctx.save(); ctx.translate(this.X(x), this.Z(z)); ctx.rotate((rnd() - .5) * .28);
+          ctx.fillStyle = '#26302f';
+          ctx.beginPath(); ctx.roundRect(-2.3 * PX, -2.25 * PX, 4.7 * PX, 4.5 * PX, [PX * 1.4, PX * .75, PX * 1.7, PX * .95]); ctx.fill();
+          if ((row + col) % 4 === 0) {
+            ctx.strokeStyle = '#c6aa7b'; ctx.lineWidth = PX * .2; ctx.lineCap = 'round';
+            ctx.beginPath(); ctx.moveTo(-PX * 1.1, -PX); ctx.bezierCurveTo(PX, -PX, -PX, PX, PX * 1.1, PX); ctx.stroke();
+          }
+          ctx.restore();
+        }
+      }
+      const x = this.X(side * 24), z = this.Z(0);
+      ctx.strokeStyle = '#26302f'; ctx.lineWidth = 2.0 * PX;
+      ctx.beginPath(); ctx.arc(x, z, 5.9 * PX, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = '#c6aa7b'; ctx.lineWidth = PX * .25;
+      for (let j = 0; j < 16; j++) {
+        const a = j * Math.PI / 8;
+        ctx.beginPath(); ctx.moveTo(x + Math.cos(a) * 5.25 * PX, z + Math.sin(a) * 5.25 * PX);
+        ctx.lineTo(x + Math.cos(a + .04) * 6.5 * PX, z + Math.sin(a + .04) * 6.5 * PX); ctx.stroke();
+      }
     }
+    ctx.restore();
     // Irregular broad patches of worn acrylic, rather than uniform digital noise.
     for (let i = 0; i < 160; i++) {
       const r = 10 + rnd() * 80;
@@ -89,12 +110,12 @@ export class CourtPainter extends Painted {
       ctx.restore();
     }
     // Aggregate showing through worn paint around high-traffic areas.
-    for (let i = 0; i < 175; i++) {
+    for (let i = 0; i < 70; i++) {
       const x = this.X((rnd() - 0.5) * COURT.length);
       const y = this.Z((rnd() - 0.5) * COURT.width);
       const r = 2 + rnd() * 13;
       ctx.fillStyle = ['#a19487', '#b49d8a', '#737b78', '#bd9b97'][Math.floor(rnd() * 4)];
-      ctx.globalAlpha = 0.12 + rnd() * 0.18;
+      ctx.globalAlpha = 0.06 + rnd() * 0.09;
       ctx.beginPath();
       for (let v = 0; v < 9; v++) {
         const a = v * Math.PI * 2 / 9;
@@ -112,7 +133,7 @@ export class CourtPainter extends Painted {
       ctx.fillRect(rnd() * this.w, rnd() * this.h, size, size);
     }
     // Thin repaired cracks, with a faded rim around the tar.
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 3; i++) {
       let x = rnd() * this.w;
       let y = rnd() * this.h;
       ctx.beginPath(); ctx.moveTo(x, y);
@@ -172,31 +193,18 @@ export class CourtPainter extends Painted {
       ctx.stroke();
     }
 
-    // Center court belongs to the naming-rights holder.
-    const plate = naming ? naming.color : '#1d1638';
-    const ink = naming ? naming.accent : '#ffd23f';
-    ctx.beginPath();
-    ctx.arc(X(0), Z(0), 6 * PX, 0, Math.PI * 2);
-    ctx.fillStyle = plate;
-    ctx.fill();
-    ctx.stroke();
-    const name = naming ? naming.name.toUpperCase() : 'YOUR NAME HERE';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    fitText(ctx, name, SIGN_FONT, 36 * PX, 56, 18);
-    const tw = ctx.measureText(name).width + 3 * PX;
-    const th = parseInt(ctx.font, 10) + 2 * PX;
-    ctx.fillStyle = plate;
-    ctx.fillRect(X(0) - tw / 2, Z(0) - th / 2, tw, th);
-    ctx.strokeRect(X(0) - tw / 2, Z(0) - th / 2, tw, th);
-    ctx.fillStyle = ink;
-    ctx.fillText(name, X(0), Z(0) + 2);
-
-    // The court's name painted along both sideline aprons, reading toward the main camera.
-    const title = `THE ${naming ? naming.name.toUpperCase() : '______'} COURT`;
-    ctx.fillStyle = 'rgba(248,242,232,0.9)';
-    fitText(ctx, title, SIGN_FONT, 70 * PX, 64, 20);
-    for (const z of [-(hw + 3.4), hw + 3.4]) ctx.fillText(title, X(0), Z(z));
+    // The location remains legible when the commercial naming slot is occupied.
+    ctx.fillStyle = '#26302f';
+    ctx.beginPath(); ctx.arc(X(0), Z(0), 6 * PX, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#e1cda7'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    fitText(ctx, 'RUCKER', SIGN_FONT, 10.3 * PX, 29, 12); ctx.fillText('RUCKER', X(0), Z(-.95));
+    fitText(ctx, 'HARLEM · NYC', BODY_FONT, 9.4 * PX, 11, 8); ctx.fillText('HARLEM · NYC', X(0), Z(1.15));
+    ctx.fillStyle = 'rgba(248,242,232,0.85)';
+    fitText(ctx, 'GREG MARIUS COURT', SIGN_FONT, 42 * PX, 24, 16);
+    ctx.fillText('GREG MARIUS COURT', X(0), Z(hw + 2.8));
+    const title = naming ? `PRESENTED BY ${naming.name.toUpperCase()}` : 'HOLCOMBE RUCKER PARK';
+    fitText(ctx, title, SIGN_FONT, 45 * PX, 24, 16);
+    ctx.fillText(title, X(0), Z(-hw - 2.8));
     // Sun-bleached pinholes in the painted lines and lettering.
     const rnd = mulberry32(717);
     ctx.fillStyle = 'rgba(63,64,67,0.12)';
@@ -231,22 +239,13 @@ export function drawBanner(p: Painted, brand: Brand | null, priceCents: number) 
       ctx.fillText(name, w / 2, h * 0.54);
     }
   } else {
-    ctx.fillStyle = '#16122b';
-    ctx.fillRect(0, 0, w, h);
-    ctx.strokeStyle = 'rgba(255,210,63,0.6)';
-    ctx.setLineDash([10, 8]);
-    ctx.lineWidth = 3;
-    ctx.strokeRect(10, 10, w - 20, h - 20);
-    ctx.setLineDash([]);
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#ffd23f';
-    const big = h / w > 0.3;
-    fitText(ctx, 'YOUR BRAND HERE', SIGN_FONT, w * 0.8, h * (big ? 0.24 : 0.38), 12);
-    ctx.fillText('YOUR BRAND HERE', w / 2, h * (big ? 0.42 : 0.42));
-    ctx.fillStyle = '#37e0ff';
-    fitText(ctx, `FROM ${usd(priceCents)}`, BODY_FONT, w * 0.6, h * (big ? 0.16 : 0.24), 10);
-    ctx.fillText(`FROM ${usd(priceCents)}`, w / 2, h * (big ? 0.7 : 0.76));
+    ctx.fillStyle = '#222b2b'; ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = '#9c8c6e'; ctx.lineWidth = 2; ctx.strokeRect(5, 5, w - 10, h - 10);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#d7c6a5';
+    fitText(ctx, 'HARLEM · 155TH', SIGN_FONT, w * .8, h * .26, 12);
+    ctx.fillText('HARLEM · 155TH', w / 2, h * .44);
+    fitText(ctx, `COMMUNITY PARTNER · ${usd(priceCents)}`, BODY_FONT, w * .85, h * .13, 8);
+    ctx.fillText(`COMMUNITY PARTNER · ${usd(priceCents)}`, w / 2, h * .73);
   }
   // Long shallow folds retain readable type while giving the vinyl a physical sheen.
   for (let i = 0; i < 6; i++) {
@@ -424,36 +423,15 @@ function muralPatina(ctx: CanvasRenderingContext2D, w: number, h: number, seed: 
 
 // --- Naming sign ------------------------------------------------------------------------------
 
-export function drawNamingSign(p: Painted, brand: Brand | null, priceCents: number) {
+export function drawNamingSign(p: Painted, brand: Brand | null, _priceCents: number) {
   const { ctx, w, h } = p;
-  const bg = brand ? brand.color : '#141129';
-  const ink = brand ? brand.accent : '#ffd23f';
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, w, h);
-  ctx.strokeStyle = ink;
-  ctx.lineWidth = 6;
-  ctx.strokeRect(8, 8, w - 16, h - 16);
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillStyle = ink;
-  const text = `THE ${brand ? brand.name.toUpperCase() : '______'} COURT`;
-  fitText(ctx, text, SIGN_FONT, w * (brand ? 0.9 : 0.62), h * 0.62, 18);
-  ctx.fillText(text, brand ? w / 2 : w * 0.36, h * 0.54);
-  if (!brand) {
-    ctx.fillStyle = '#37e0ff';
-    fitText(ctx, `NAMING RIGHTS ${usd(priceCents)}`, SIGN_FONT, w * 0.3, h * 0.3, 12);
-    ctx.fillText(`NAMING RIGHTS ${usd(priceCents)}`, w * 0.83, h * 0.54);
-  }
-  const shadeEdge = ctx.createLinearGradient(0, 0, 0, h);
-  shadeEdge.addColorStop(0, 'rgba(255,247,220,0.12)');
-  shadeEdge.addColorStop(0.18, 'rgba(0,0,0,0)');
-  shadeEdge.addColorStop(0.85, 'rgba(0,0,0,0)');
-  shadeEdge.addColorStop(1, 'rgba(0,0,0,0.24)');
-  ctx.fillStyle = shadeEdge; ctx.fillRect(0, 0, w, h);
-  for (const x of [20, w - 20]) for (const y of [20, h - 20]) {
-    ctx.fillStyle = '#80928d'; ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = '#32393a'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x - 2, y); ctx.lineTo(x + 2, y); ctx.stroke();
-  }
+  ctx.fillStyle = '#1d2727'; ctx.fillRect(0, 0, w, h);
+  ctx.strokeStyle = '#b5a06f'; ctx.lineWidth = 6; ctx.strokeRect(7, 7, w - 14, h - 14);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#e6dfcd';
+  fitText(ctx, 'HOLCOMBE RUCKER PARK', BODY_FONT, w * .92, h * .37, 14);
+  ctx.fillText('HOLCOMBE RUCKER PARK', w / 2, h * .40);
+  const line = brand ? `GREG MARIUS COURT · ${brand.name.toUpperCase()}` : 'GREG MARIUS COURT · HARLEM, NEW YORK';
+  fitText(ctx, line, BODY_FONT, w * .85, h * .16, 10); ctx.fillText(line, w / 2, h * .74);
   p.commit();
 }
 
@@ -465,7 +443,7 @@ export class ScreenPainter extends Painted {
   private readonly led: HTMLCanvasElement;
   private renter: Brand | null = null;
   private dayPrice = 0;
-  private mode: ScreenMode = 'promo';
+  private mode: ScreenMode = 'score';
   private modeTime = 0;
   private lastDraw = -1;
   private flashInfo: { team: 0 | 1; points: number } | null = null;
@@ -492,7 +470,7 @@ export class ScreenPainter extends Painted {
   set(renter: Brand | null, dayPriceCents: number) {
     this.renter = renter;
     this.dayPrice = dayPriceCents;
-    this.mode = renter ? 'ad' : 'promo';
+    this.mode = renter ? 'ad' : 'score';
     this.modeTime = 0;
     this.lastDraw = -1;
   }
@@ -516,9 +494,9 @@ export class ScreenPainter extends Painted {
 
   update(t: number, dt: number, sb: Scoreboard) {
     this.modeTime += dt;
-    const limit = { flash: 2, ad: 7, promo: 5, score: 4 }[this.mode];
+    const limit = { flash: 1.5, ad: 3, promo: 4, score: 24 }[this.mode];
     if (this.modeTime > limit) {
-      this.mode = this.mode === 'flash' ? 'score' : this.mode === 'score' ? (this.renter ? 'ad' : 'promo') : 'score';
+      this.mode = this.mode === 'flash' ? 'score' : this.mode === 'score' ? (this.renter ? 'ad' : 'score') : 'score';
       this.modeTime = 0;
       this.lastDraw = -1;
     }
@@ -558,15 +536,15 @@ export class ScreenPainter extends Painted {
 
   private drawScore(sb: Scoreboard) {
     const { ctx, w, h } = this;
-    ctx.fillStyle = '#07060e';
+    ctx.fillStyle = '#172120';
     ctx.fillRect(0, 0, w, h);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    TEAMS.forEach((team, i) => {
+    TEAMS.forEach((_team, i) => {
       const x = i === 0 ? w * 0.22 : w * 0.78;
-      ctx.fillStyle = team.jersey;
+      ctx.fillStyle = '#e4e0cd';
       ctx.font = `30px ${SIGN_FONT}`;
-      ctx.fillText(team.name, x, h * 0.2);
+      ctx.fillText(i === 0 ? 'HOME' : 'GUEST', x, h * 0.2);
       ctx.fillStyle = '#fdf6e3';
       ctx.font = `140px ${SIGN_FONT}`;
       ctx.fillText(String(sb.score[i]), x, h * 0.52);
@@ -577,9 +555,9 @@ export class ScreenPainter extends Painted {
     ctx.font = `34px ${SIGN_FONT}`;
     ctx.fillText(`Q${sb.quarter}`, w / 2, h * 0.34);
     ctx.fillText(`${m}:${String(s).padStart(2, '0')}`, w / 2, h * 0.52);
-    ctx.fillStyle = '#37e0ff';
+    ctx.fillStyle = '#c2b48a';
     ctx.font = `600 24px ${BODY_FONT}`;
-    ctx.fillText(this.renter ? `PRESENTED BY ${this.renter.name.toUpperCase()}` : 'THIS SCREEN COULD BE YOURS', w / 2, h * 0.86);
+    ctx.fillText(this.renter ? `PRESENTED BY ${this.renter.name.toUpperCase()}` : 'GREG MARIUS COURT', w / 2, h * 0.86);
   }
 
   private drawPromo(t: number) {
@@ -593,9 +571,9 @@ export class ScreenPainter extends Painted {
     ctx.textBaseline = 'middle';
     ctx.fillStyle = '#ffd23f';
     ctx.font = `64px ${SIGN_FONT}`;
-    ctx.fillText('YOUR LAUNCH', w / 2, h * 0.3);
-    ctx.fillText('ON THIS SCREEN', w / 2, h * 0.5);
-    ctx.fillStyle = Math.floor(t * 2) % 2 ? '#ff3ea5' : '#37e0ff';
+    ctx.fillText('RUCKER PARK', w / 2, h * 0.3);
+    ctx.fillText('SUMMER RUN', w / 2, h * 0.5);
+    ctx.fillStyle = Math.floor(t * 2) % 2 ? '#c2b48a' : '#d7c6a5';
     ctx.font = `44px ${SIGN_FONT}`;
     ctx.fillText(`${usd(this.dayPrice)} / DAY`, w / 2, h * 0.76);
   }

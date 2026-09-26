@@ -28,7 +28,7 @@ export const SEAT_INDEX = new Map<string, number>();
     for (let row = 0; row < sec.rows; row++) {
       for (let col = 0; col < sec.cols; col++) {
         // Columns run left to right as seen from the court, so card-stunt letters read correctly.
-        const along = (col - (sec.cols - 1) / 2) * s.seatSpacing;
+        const along = (col - (sec.cols - 1) / 2) * s.seatSpacing + (col < sec.cols / 2 ? -s.aisleWidth / 2 : s.aisleWidth / 2);
         const x = sec.side === -1 ? along : -along;
         const y = s.firstHeight + row * s.rowRise + 0.08;
         const z = sec.side * (s.front + row * s.rowDepth);
@@ -102,7 +102,7 @@ export const MURAL_SLOTS: PanelSlot[] = L.murals.map((m) =>
 );
 
 export function muralWallName(index: number): string {
-  return L.murals[index].facing === '+x' ? 'HANDBALL WALL' : 'CORNER STORE WALL';
+  return L.murals[index].facing === '+x' ? 'WEST ART PANELS' : 'EAST ART PANELS';
 }
 
 export const SCREEN_SLOT = panel(new THREE.Vector3(L.screen.x, L.screen.y, L.screen.z + 0.75), L.screen.width, L.screen.height, '+z');

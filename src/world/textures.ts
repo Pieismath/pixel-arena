@@ -205,8 +205,8 @@ export function chainLinkTexture() {
   const S = 128;
   const { canvas, ctx } = makeCanvas(S, S);
   ctx.clearRect(0, 0, S, S);
-  ctx.strokeStyle = '#c8ced6';
-  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#55625b';
+  ctx.lineWidth = 2;
   const n = 4;
   const step = S / n;
   for (let i = -n; i <= n * 2; i++) {
@@ -433,4 +433,18 @@ export function surfaceBumpTexture(kind: 'asphalt' | 'plaster' | 'vinyl', seed =
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
   texture.anisotropy = maxAnisotropy;
   return texture;
+}
+
+/** Plane-tree bark: vertical fissures and exfoliating warm gray plates. */
+export function barkTexture() {
+  const { canvas, ctx } = makeCanvas(256, 512);
+  const rnd = mulberry32(916);
+  ctx.fillStyle = '#6e6958'; ctx.fillRect(0, 0, 256, 512);
+  for (let i = 0; i < 520; i++) {
+    const x = rnd() * 256, y = rnd() * 512;
+    ctx.fillStyle = ['#565747', '#96917b', '#827b64', '#454a3e'][i % 4];
+    ctx.beginPath(); ctx.roundRect(x, y, 4 + rnd() * 18, 9 + rnd() * 68, rnd() * 6); ctx.fill();
+  }
+  grain(ctx, 256, 512, rnd, 4500, ['rgba(0,0,0,.12)', 'rgba(234,222,191,.10)'], [1, 2]);
+  return canvasTexture(canvas, [3, 7]);
 }
