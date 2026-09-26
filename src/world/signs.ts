@@ -280,6 +280,24 @@ export function drawBanner(p: Painted, brand: Brand | null, priceCents: number) 
 
 // --- Murals -----------------------------------------------------------------------------------
 
+let muralUnderpainting: CanvasImageSource | null = null;
+
+/** Optional original artwork, loaded after the first frame; typography and brand colors stay live. */
+export function setMuralUnderpainting(image: CanvasImageSource | null) {
+  muralUnderpainting = image;
+}
+
+function drawUnderpainting(ctx: CanvasRenderingContext2D, w: number, h: number, seed: number, branded: boolean) {
+  if (!muralUnderpainting) return;
+  ctx.save();
+  // Borrow tonal texture, rather than covering a buyer's palette with fixed artwork colors.
+  ctx.globalCompositeOperation = branded ? 'luminosity' : 'multiply';
+  ctx.globalAlpha = branded ? 0.38 : 0.12;
+  if (seed % 2) { ctx.translate(w, 0); ctx.scale(-1, 1); }
+  ctx.drawImage(muralUnderpainting, 0, 0, w, h);
+  ctx.restore();
+}
+
 export function drawMural(p: Painted, brand: Brand | null, priceCents: number, seed: number) {
   const { ctx, w, h } = p;
   const rnd = mulberry32(seed);
@@ -287,6 +305,7 @@ export function drawMural(p: Painted, brand: Brand | null, priceCents: number, s
   if (!brand) {
     ctx.fillStyle = '#d7cfc2';
     ctx.fillRect(0, 0, w, h);
+    drawUnderpainting(ctx, w, h, seed, false);
     for (let i = 0; i < 2500; i++) {
       ctx.fillStyle = rnd() < 0.5 ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.08)';
       ctx.fillRect(rnd() * w, rnd() * h, 2, 2);
@@ -311,6 +330,7 @@ export function drawMural(p: Painted, brand: Brand | null, priceCents: number, s
   // Layers of loose spray gestures feel painted onto the wall, with the brand palette intact.
   ctx.fillStyle = shade(brand.color, 0.82);
   ctx.fillRect(0, 0, w, h);
+  drawUnderpainting(ctx, w, h, seed, true);
   for (let i = 0; i < 9; i++) {
     ctx.save();
     ctx.translate(rnd() * w, rnd() * h);
@@ -481,6 +501,16 @@ export class ScreenPainter extends Painted {
     this.flashInfo = { team, points };
     this.mode = 'flash';
     this.modeTime = 0;
+    this.lastDraw = -1;
+  }
+
+  /** Draw the purchased surface for a synchronous share capture, without changing its rotation. */
+  drawAdForCapture() {
+    if (this.renter) this.drawAd(this.renter);
+    else this.drawPromo(Math.max(0, this.lastDraw));
+    this.ctx.drawImage(this.led, 0, 0);
+    this.commit();
+    // The next animation frame restores the current score/flash/ad mode without a 100ms wait.
     this.lastDraw = -1;
   }
 
