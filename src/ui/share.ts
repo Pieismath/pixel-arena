@@ -41,6 +41,57 @@ function fitText(ctx: CanvasRenderingContext2D, text: string, x: number, y: numb
   ctx.fillText(text, x, y, maxWidth);
 }
 
+let closeCurrentPreview: (() => void) | null = null;
+
+function showCardPreview(dataUrl: string, blob: Blob, filename: string, description: string) {
+  closeCurrentPreview?.();
+  const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const url = URL.createObjectURL(blob);
+  const dialog = document.createElement('dialog');
+  dialog.className = 'share-preview';
+  dialog.setAttribute('aria-labelledby', 'share-preview-title');
+  dialog.innerHTML = `
+    <div class="share-preview-content">
+      <header class="share-preview-header">
+        <div><div class="badge">Made for sharing</div><h2 id="share-preview-title">Your spot card is ready.</h2></div>
+        <button class="share-preview-close" type="button" aria-label="Close spot card preview">×</button>
+      </header>
+      <div class="share-preview-image"></div>
+      <footer class="share-preview-footer">
+        <p>Save the PNG to share it.<br><span>On a phone, you can also press and hold the image.</span></p>
+        <a class="share-preview-save">Save PNG <span aria-hidden="true">↓</span></a>
+      </footer>
+    </div>`;
+  const image = document.createElement('img');
+  image.src = dataUrl;
+  image.alt = description;
+  image.draggable = false;
+  dialog.querySelector('.share-preview-image')!.appendChild(image);
+  const save = dialog.querySelector<HTMLAnchorElement>('.share-preview-save')!;
+  save.href = url;
+  save.download = filename;
+  let closed = false;
+  const cleanup = () => {
+    if (closed) return;
+    closed = true;
+    URL.revokeObjectURL(url);
+    dialog.remove();
+    if (closeCurrentPreview === cleanup) closeCurrentPreview = null;
+    if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
+  };
+  closeCurrentPreview = cleanup;
+  dialog.querySelector('.share-preview-close')!.addEventListener('click', () => dialog.close());
+  dialog.addEventListener('close', cleanup, { once: true });
+  // Keep game shortcuts behind the modal; native dialog still handles Escape and focus trapping.
+  dialog.addEventListener('keydown', (event) => event.stopPropagation());
+  dialog.addEventListener('click', (event) => {
+    if (event.target === dialog) dialog.close();
+  });
+  document.body.appendChild(dialog);
+  dialog.showModal();
+  save.focus({ preventScroll: true });
+}
+
 /** Capture immediately after the final scene render; no preserveDrawingBuffer or extra WebGL memory required. */
 export async function downloadSpotCard(source: HTMLCanvasElement, state: ArenaState, ref: SpotRef): Promise<void> {
   if (!source.width || !source.height) throw new Error('The scene has not rendered yet.');
@@ -119,15 +170,11 @@ export async function downloadSpotCard(source: HTMLCanvasElement, state: ArenaSt
     fitText(ctx, `${spot.price}  /  Preview pricing`, 40, y + 203, w - 80, 20, 600);
   }
 
+  // Keep the preview self-contained for mobile long-press saving and browsers that block automatic downloads.
+  const dataUrl = card.toDataURL('image/png');
   const blob = await new Promise<Blob>((resolve, reject) => {
     card.toBlob((result) => result ? resolve(result) : reject(new Error('Image export failed.')), 'image/png');
   });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `street-court-${ref.kind}-${(spot.brand?.name ?? 'your-spot').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.png`;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 10000);
+  const filename = `street-court-${ref.kind}-${(spot.brand?.name ?? 'your-spot').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.png`;
+  showCardPreview(dataUrl, blob, filename, `${headline} at the street court. ${spot.place}. ${state.demo ? 'Fictional demo brands. ' : ''}Interactive preview; no purchase made.`);
 }

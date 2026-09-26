@@ -284,7 +284,7 @@ export function createUI(handlers: UIHandlers) {
       share.disabled = true;
       share.textContent = 'Making your spot card…';
       void handlers.onShare(selected).then(
-        () => showToast('Spot card ready. Share a little streetball.'),
+        () => showToast('Your spot card is ready.'),
         () => showToast('The spot card could not be saved. Please try again.'),
       ).finally(() => {
         sharing = false;
