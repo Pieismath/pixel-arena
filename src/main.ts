@@ -11,6 +11,9 @@ import { BANNER_SLOTS, MURAL_SLOTS, NAMING_SLOT, SCREEN_SLOT, SEAT_INDEX, SEATS,
 import { createEnvironment, createPark } from './world/park';
 import { GameSim } from './world/players';
 import { setMaxAnisotropy } from './world/textures';
+import { downloadSpotCard } from './ui/share';
+import { createMoments } from './world/moments';
+import { setMuralUnderpainting } from './world/signs';
 
 const DEMO_KEY = 'street-court:demo';
 
@@ -37,7 +40,8 @@ function saveDemoPref(on: boolean) {
 function pickQuality(): Quality {
   const q = new URLSearchParams(location.search).get('quality');
   if (q === 'high' || q === 'low') return q;
-  return window.matchMedia('(pointer: coarse)').matches ? 'low' : 'high';
+  const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8;
+  return window.matchMedia('(pointer: coarse)').matches || memory <= 4 ? 'low' : 'high';
 }
 
 const easeInOutCubic = (x: number) => (x < 0.5 ? 4 * x * x * x : 1 - (-2 * x + 2) ** 3 / 2);
@@ -53,10 +57,14 @@ function keepInsideStreets(p: THREE.Vector3) {
 async function main() {
   const loadingText = document.getElementById('loading-text')!;
   const quality = pickQuality();
+  const params = new URLSearchParams(location.search);
+  const stillAt = import.meta.env.DEV ? Number(params.get('still') ?? 0) : 0;
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const canvas = document.getElementById('scene') as HTMLCanvasElement;
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: quality === 'low', powerPreference: 'high-performance' });
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 0.98;
+  renderer.info.autoReset = false;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
   setMaxAnisotropy(renderer.capabilities.getMaxAnisotropy());
@@ -70,21 +78,21 @@ async function main() {
   controls.maxDistance = 125;
   controls.minPolarAngle = 0.15;
   controls.maxPolarAngle = 1.36;
-  controls.autoRotate = true;
+  controls.autoRotate = false;
   controls.autoRotateSpeed = 0.25;
 
   const { sun } = createEnvironment(scene, renderer);
-  if (quality === 'low') sun.shadow.mapSize.set(2048, 2048);
+  if (quality === 'low') sun.shadow.mapSize.set(1024, 1024);
   sun.shadow.radius = 3;
   const post = createPostFX(renderer, scene, camera, quality);
 
   const isPortrait = () => window.innerWidth / window.innerHeight < 0.85;
   const homeView = () =>
     isPortrait()
-      ? { camera: new THREE.Vector3(40, 72, 76), target: new THREE.Vector3(-2, 16, -18) }
-      : { camera: new THREE.Vector3(74, 60, 76), target: new THREE.Vector3(-2, 21, -22) };
+      ? { camera: new THREE.Vector3(66, 70, 84), target: new THREE.Vector3(0, 2, -4) }
+      : { camera: new THREE.Vector3(62, 43, 70), target: new THREE.Vector3(0, 4, -7) };
   function fitCamera() {
-    camera.fov = isPortrait() ? 58 : 40;
+    camera.fov = isPortrait() ? 60 : 45;
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
   }
@@ -95,16 +103,12 @@ async function main() {
   controls.update();
   post.resize();
 
-  // Fonts first (the signs are drawn with them), then the three models built in Blender.
+  // Models load together. Optional display fonts never hold up the first frame.
   const manager = new THREE.LoadingManager();
   manager.onProgress = (_url, loaded, total) => (loadingText.textContent = `LOADING THE COURT… ${Math.round((loaded / total) * 100)}%`);
   const loader = new GLTFLoader(manager);
   const base = import.meta.env.BASE_URL;
-  const [, parkGltf, ballerGltf, fansGltf] = await Promise.all([
-    Promise.race([
-      Promise.all(['40px "Bungee"', '40px "Permanent Marker"', '600 20px "Inter"'].map((f) => document.fonts.load(f))),
-      new Promise((resolve) => setTimeout(resolve, 3500)),
-    ]),
+  const [parkGltf, ballerGltf, fansGltf] = await Promise.all([
     loader.loadAsync(`${base}models/park.glb`),
     loader.loadAsync(`${base}models/baller.glb`),
     loader.loadAsync(`${base}models/fans.glb`),
@@ -116,14 +120,23 @@ async function main() {
   scene.add(crowd.group);
   const game = new GameSim(ballerGltf);
   scene.add(game.group);
+  const moments = createMoments();
+  scene.add(moments.group);
 
   let demo = readDemoPref();
   let state: ArenaState = await loadArenaState(demo);
   function applyState() {
     park.setState(state);
     crowd.setState(state);
+    canvas.dataset.demo = String(state.demo);
+    document.getElementById('cinematic-disclosure')!.textContent = state.demo ? 'FICTIONAL DEMO · Brands & activity simulated' : 'COURT PREVIEW · Checkout is not live';
   }
   applyState();
+  const underpainting = new Image();
+  underpainting.decoding = 'async';
+  underpainting.onload = () => { setMuralUnderpainting(underpainting); park.setState(state); };
+  // The optional art arrives after the interactive court; procedural murals are the fallback.
+  requestAnimationFrame(() => { underpainting.src = `${base}textures/mural-underpainting.webp`; });
   void document.fonts.ready.then(() => park.setState(state));
 
   const highlight = new THREE.Mesh(
@@ -183,17 +196,19 @@ async function main() {
   }
 
   // --- Selection & camera moves ---------------------------------------------
+  type View = 'overview' | 'courtside' | 'crowd';
+  let currentView: View = 'overview';
+  let followAction = false;
   let selected: SpotRef | null = null;
   let fly: { fromT: THREE.Vector3; toT: THREE.Vector3; fromP: THREE.Vector3; toP: THREE.Vector3; t: number } | null = null;
-  let idle = 0;
 
   function focus(ref: SpotRef) {
+    followAction = false;
     selected = ref;
     const view = spotView(ref);
     keepInsideStreets(view.camera);
     fly = { fromT: controls.target.clone(), toT: view.target, fromP: camera.position.clone(), toP: view.camera, t: 0 };
     controls.autoRotate = false;
-    idle = 0;
     highlightSpot(ref);
     ui.showSpot(ref);
   }
@@ -214,6 +229,7 @@ async function main() {
 
   function toggleTrailer() {
     trailer = !trailer;
+    ui.setTrailerMode(trailer);
     document.body.classList.toggle('trailer', trailer);
     controls.enabled = !trailer;
     hint.hidden = !trailer;
@@ -234,24 +250,93 @@ async function main() {
     }
   }
 
+  function actionView() {
+    const subject = game.cinematicTarget;
+    const dir = game.attackingDirection;
+    const dunk = game.cinematicMode === 'dunk';
+    const distance = isPortrait() ? 1.4 : 1;
+    wantTarget.copy(subject);
+    wantTarget.y = dunk ? 8 : Math.max(4, subject.y);
+    wantPos.set(
+      THREE.MathUtils.clamp(subject.x + dir * (dunk ? -8 : game.cinematicMode === 'drive' ? -5 : 11) * distance, -54, 54),
+      dunk ? 11 : 7.5,
+      subject.z + (dunk ? 23 : 18) * distance,
+    );
+  }
+
   function updateTrailer(dt: number) {
     trailerT += dt;
-    const a = trailerT * 0.1 + 0.85;
-    wantPos.set(Math.cos(a) * 68, 44 + 12 * Math.sin(trailerT * 0.17 + 1.2), Math.sin(a) * 64 - 4);
-    const ball = game.ballPosition;
-    wantTarget.set(ball.x * 0.5, 8 + 10 * (0.5 + 0.5 * Math.sin(trailerT * 0.13)), ball.z * 0.3 - 6);
-    camera.position.lerp(wantPos, 1 - Math.exp(-dt * 1.4));
+    const beat = trailerT % 26;
+    if (stillAt > 0 || game.cinematicMode === 'drive' || game.cinematicMode === 'dunk' || (beat > 5 && beat < 15)) {
+      actionView();
+    } else if (beat >= 15 && beat < 20) {
+      wantPos.set(16 - (beat - 15) * 2, 9, -14);
+      wantTarget.set(-5, 9, -48);
+    } else {
+      const a = trailerT * 0.025 + 0.78;
+      wantPos.set(Math.cos(a) * 73, 31 + 4 * Math.sin(trailerT * 0.1), Math.sin(a) * 67);
+      wantTarget.set(0, 7, -8);
+    }
+    const speed = game.cinematicMode === 'dunk' ? 3 : 1.4;
+    camera.position.lerp(wantPos, 1 - Math.exp(-dt * speed));
     keepInsideStreets(camera.position);
-    trailerTarget.lerp(wantTarget, 1 - Math.exp(-dt * 2));
+    trailerTarget.lerp(wantTarget, 1 - Math.exp(-dt * 2.5));
     camera.lookAt(trailerTarget);
     if (trailerT > nextWave) {
       crowd.startWave();
-      nextWave = trailerT + 18;
+      nextWave = trailerT + 24;
     }
   }
 
+  function setView(view: View) {
+    if (trailer) toggleTrailer();
+    ui.hidePanels();
+    clearFocus();
+    currentView = view;
+    followAction = view === 'courtside';
+    controls.autoRotate = false;
+    const shot = view === 'overview' ? homeView() : view === 'crowd'
+      ? { camera: new THREE.Vector3(14, 9, -16), target: new THREE.Vector3(0, 8, -46) }
+      : (actionView(), { camera: wantPos.clone(), target: wantTarget.clone() });
+    fly = { fromT: controls.target.clone(), toT: shot.target, fromP: camera.position.clone(), toP: shot.camera, t: 0 };
+    ui.setView(view);
+  }
+
+  function playHighlight() {
+    game.playHighlight();
+    setView('courtside');
+    crowd.startWave();
+    ui.setHighlightPlaying(true);
+    window.setTimeout(() => ui.setHighlightPlaying(false), 7000);
+  }
+
   // --- UI --------------------------------------------------------------------
+  let previewOriginal: ArenaState | null = null;
+  let previewTimer = 0;
+  function restorePreview() {
+    window.clearTimeout(previewTimer);
+    if (!previewOriginal) return;
+    state = previewOriginal;
+    previewOriginal = null;
+    applyState();
+    ui.render(state);
+    if (selected) ui.showSpot(selected);
+  }
+  function previewTakeover() {
+    restorePreview();
+    previewOriginal = state;
+    const brand = { id: 'local-takeover-preview', name: 'Moonstep Works', tagline: 'A little air. A lot of ambition.', url: 'https://example.com', color: '#48675e', accent: '#ffe0a1' };
+    state = { ...state, demo: true, brands: { ...state.brands, [brand.id]: brand }, naming: { ...state.naming, brandId: brand.id }, totalSalesCents: null };
+    applyState();
+    ui.render(state);
+    focus({kind: 'naming'});
+    if (!reducedMotion) moments.start(brand.color, brand.accent);
+    crowd.cheer();
+    ui.showToast('Demo takeover preview · the original court returns in 8 seconds.');
+    previewTimer = window.setTimeout(restorePreview, 8000);
+  }
   async function toggleDemo() {
+    restorePreview();
     demo = !demo;
     saveDemoPref(demo);
     state = await loadArenaState(demo);
@@ -260,7 +345,31 @@ async function main() {
     if (selected) ui.showSpot(selected);
   }
 
-  const ui = createUI({ focus, clearFocus, toggleTrailer, toggleDemo: () => void toggleDemo() });
+  const ui = createUI({
+    focus, clearFocus, toggleTrailer, toggleDemo: () => void toggleDemo(), setView, playHighlight, previewTakeover,
+    onShare: async (ref) => {
+      const previousPosition = camera.position.clone();
+      const previousRotation = camera.quaternion.clone();
+      const previousHighlight = highlight.visible;
+      const shot = spotView(ref);
+      let card: Promise<void>;
+      try {
+        camera.position.copy(shot.camera);
+        camera.lookAt(shot.target);
+        highlight.visible = false;
+        park.prepareCapture(ref);
+        post.render();
+        // The card copies pixels synchronously before its first await.
+        card = downloadSpotCard(renderer.domElement, state, ref);
+      } finally {
+        camera.position.copy(previousPosition);
+        camera.quaternion.copy(previousRotation);
+        highlight.visible = previousHighlight;
+        post.render();
+      }
+      await card;
+    },
+  });
   ui.render(state);
 
   game.onScore = (team, points) => {
@@ -329,12 +438,12 @@ async function main() {
 
   controls.addEventListener('start', () => {
     controls.autoRotate = false;
+    followAction = false;
     fly = null;
-    idle = 0;
   });
 
   window.addEventListener('keydown', (e) => {
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.metaKey || e.ctrlKey || e.altKey || /INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName)) return;
     const key = e.key.toLowerCase();
     if (key === 't') toggleTrailer();
     else if (key === 'escape') {
@@ -344,28 +453,59 @@ async function main() {
         clearFocus();
       }
     } else if (key === 'w') crowd.startWave();
+    else if (key === '1') setView('overview');
+    else if (key === '2') setView('courtside');
+    else if (key === '3') setView('crowd');
+    else if (key === 'h') playHighlight();
   });
 
   // Local-only hook for scripted checks; stripped from production builds.
-  if (import.meta.env.DEV) Object.assign(window, { __court: { focus, pickAt, toggleTrailer, startWave: crowd.startWave, game, camera, controls, renderer, post, scene } });
+  if (import.meta.env.DEV) Object.assign(window, { __court: { focus, pickAt, toggleTrailer, startWave: crowd.startWave, game, camera, controls, renderer, post, scene, setView, playHighlight } });
 
   window.addEventListener('resize', () => {
     fitCamera();
     post.resize();
+    if (!selected && !trailer) setView(currentView);
   });
 
   // --- Loop ------------------------------------------------------------------
   let last = performance.now();
   let elapsed = 0;
   let firstFrame = true;
+  let metricsTime = 0;
+  let metricsFrames = 0;
+  const metrics = params.get('inspect') === '1' ? document.createElement('output') : null;
+  if (metrics) {
+    metrics.id = 'render-metrics';
+    metrics.style.cssText = 'position:fixed;z-index:80;bottom:140px;right:18px;background:#171a20dd;color:#fff;padding:8px;font:11px monospace;pointer-events:none';
+    document.body.append(metrics);
+  }
+  let sampleTime = 0;
+  let sampleFrames = 0;
+  let adaptations = 0;
+  let pageVisible = !document.hidden;
+  document.addEventListener('visibilitychange', () => { pageVisible = !document.hidden; last = performance.now(); });
+  canvas.addEventListener('webglcontextlost', (event) => {
+    event.preventDefault();
+    showFallback('The graphics connection paused. Reload to return to the court.');
+  });
+  canvas.addEventListener('webglcontextrestored', () => location.reload());
+  const startView = params.get('view');
+  if (startView === 'courtside' || startView === 'crowd') setView(startView);
+  if (params.get('highlight') === '1') playHighlight();
+  if (params.get('trailer') === '1') toggleTrailer();
   renderer.setAnimationLoop((now: number) => {
-    const dt = Math.min((now - last) / 1000, 0.05);
+    if (!pageVisible) return;
+    const rawDt = (now - last) / 1000;
+    const dt = Math.min(rawDt, 0.05);
     last = now;
-    elapsed += dt;
+    const simDt = stillAt > 0 ? Math.max(0, Math.min(dt, stillAt - elapsed)) : dt;
+    elapsed += simDt;
 
-    game.update(dt, elapsed);
-    park.update(elapsed, dt, game);
-    crowd.update(elapsed, dt);
+    game.update(simDt, elapsed);
+    park.update(elapsed, simDt, game);
+    crowd.update(elapsed, simDt);
+    moments.update(simDt);
 
     if (trailer) updateTrailer(dt);
     else {
@@ -375,9 +515,10 @@ async function main() {
         controls.target.lerpVectors(fly.fromT, fly.toT, k);
         camera.position.lerpVectors(fly.fromP, fly.toP, k);
         if (fly.t >= 1) fly = null;
-      } else if (!controls.autoRotate && !selected) {
-        idle += dt;
-        if (idle > 15) controls.autoRotate = true;
+      } else if (followAction && !selected && !reducedMotion) {
+        actionView();
+        camera.position.lerp(wantPos, 1 - Math.exp(-dt * 2));
+        controls.target.lerp(wantTarget, 1 - Math.exp(-dt * 3));
       }
       controls.update(dt);
       keepInsideStreets(camera.position);
@@ -387,7 +528,36 @@ async function main() {
       hover(now);
     }
 
+    if (elapsed > 5 && adaptations < 2 && !params.has('quality')) {
+      sampleTime += rawDt;
+      sampleFrames++;
+      if (sampleTime > 4) {
+        if (sampleFrames / sampleTime < 32) {
+          if (post.quality === 'low') renderer.shadowMap.enabled = false;
+          post.degrade();
+          sun.shadow.mapSize.set(1024, 1024);
+          sun.shadow.map?.dispose();
+          sun.shadow.map = null;
+          adaptations++;
+        } else adaptations = 2;
+        sampleTime = 0;
+        sampleFrames = 0;
+      }
+    }
+    renderer.info.reset();
     post.render();
+    metricsTime += rawDt;
+    metricsFrames++;
+    if (metricsTime >= 2) {
+      const fps = Math.round(metricsFrames / metricsTime);
+      canvas.dataset.fps = String(fps);
+      canvas.dataset.quality = post.quality;
+      canvas.dataset.calls = String(renderer.info.render.calls);
+      canvas.dataset.triangles = String(renderer.info.render.triangles);
+      if (metrics) metrics.textContent = `${post.quality} · ${fps} fps · ${renderer.info.render.calls} draws · ${(renderer.info.render.triangles / 1e6).toFixed(2)}M triangles`;
+      metricsTime = 0;
+      metricsFrames = 0;
+    }
     if (firstFrame) {
       firstFrame = false;
       document.getElementById('loading')?.remove();
@@ -395,8 +565,29 @@ async function main() {
   });
 }
 
+function showFallback(message: string) {
+  document.getElementById('loading')?.remove();
+  document.getElementById('ui')?.setAttribute('hidden', '');
+  const fallback = document.createElement('section');
+  fallback.id = 'graphics-fallback';
+  fallback.style.cssText = 'position:fixed;inset:0;z-index:60;display:grid;place-content:center;padding:24px;background:#191b20;color:#f5edda;text-align:center;font:16px system-ui';
+  const image = document.createElement('img');
+  image.src = `${import.meta.env.BASE_URL}court-preview.jpg`;
+  image.alt = 'Preview of the fictional street basketball court';
+  image.style.cssText = 'width:min(100%,800px);max-height:60vh;object-fit:cover;border-radius:12px';
+  const text = document.createElement('p');
+  text.textContent = message;
+  const retry = document.createElement('a');
+  const url = new URL(location.href);
+  url.searchParams.set('quality', 'low');
+  retry.href = url.href;
+  retry.textContent = 'Open with lighter graphics →';
+  retry.style.color = '#f4c967';
+  fallback.append(image, text, retry);
+  document.body.append(fallback);
+}
+
 main().catch((err) => {
   console.error(err);
-  const text = document.getElementById('loading-text');
-  if (text) text.textContent = 'The court failed to load. Your browser may not support WebGL.';
+  showFallback('The interactive court could not load on this device. Here is a preview.');
 });

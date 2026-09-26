@@ -11,11 +11,11 @@ const std = (p: THREE.MeshStandardMaterialParameters): Mat => new THREE.MeshStan
 const glow = (hex: string, strength: number) => new THREE.MeshBasicMaterial({ color: new THREE.Color(hex).multiplyScalar(strength) });
 
 function parkMaterials(): Record<string, THREE.Material> {
-  const red = T.facadeTextures('#a24b37', '#cdbba6', 11, 0.3);
-  const tan = T.facadeTextures('#c08d63', '#e2d3bd', 12, 0.24);
-  const gray = T.facadeTextures('#76727c', '#bdb6ae', 13, 0.26);
+  const red = T.facadeTextures('#8e5140', '#967968', 11, 0.3);
+  const tan = T.facadeTextures('#aa896a', '#bca58a', 12, 0.24);
+  const gray = T.facadeTextures('#66646d', '#948e8b', 13, 0.26);
   const facade = (f: { map: THREE.Texture; emissiveMap: THREE.Texture }) =>
-    std({ map: f.map, emissiveMap: f.emissiveMap, emissive: new THREE.Color('#ffc27a'), emissiveIntensity: 1.6, roughness: 0.92 });
+    std({ map: f.map, emissiveMap: f.emissiveMap, emissive: new THREE.Color('#ffc27a'), emissiveIntensity: 0.8, roughness: 0.92 });
   const awning = (a: string, b: string) => {
     const t = T.stripeTexture(a, b, 3, true, 64);
     return std({ map: t, roughness: 0.8 });
@@ -27,7 +27,7 @@ function parkMaterials(): Record<string, THREE.Material> {
     Curb: std({ color: '#8c877f' }),
     WallPaint: std({ color: '#d9d1c5', roughness: 0.95 }),
     Aluminum: std({ map: T.brushedTexture('#c7ced8'), metalness: 0.5, roughness: 0.38 }),
-    Metal: std({ color: '#363a46', metalness: 0.35, roughness: 0.55 }),
+    Metal: std({ color: '#34383d', metalness: 0.35, roughness: 0.55 }),
     Padding: std({ map: T.stripeTexture('#253d75', '#1b2d58', 4, true, 3), roughness: 0.7 }),
     FacadeRed: facade(red),
     FacadeTan: facade(tan),
@@ -35,8 +35,8 @@ function parkMaterials(): Record<string, THREE.Material> {
     Roof: std({ color: '#3b3539', roughness: 0.95 }),
     Cornice: std({ color: '#ddcfb8', roughness: 0.85 }),
     Wood: std({ map: T.stripeTexture('#7d5539', '#5a3b26', 1.2, true, 6), roughness: 0.85 }),
-    Foliage: std({ map: T.foliageTexture('#3f8f4a', 4), roughness: 0.95 }),
-    FoliageLight: std({ map: T.foliageTexture('#63ad45', 5), roughness: 0.95 }),
+    Foliage: std({ map: T.foliageTexture('#536943', 4), roughness: 0.95 }),
+    FoliageLight: std({ map: T.foliageTexture('#8c9853', 5), roughness: 0.95 }),
     Bark: std({ color: '#5a3d2a' }),
     AwningRed: awning('#c8402f', '#f3e9d8'),
     AwningGreen: awning('#2f8f5a', '#f3e9d8'),
@@ -44,7 +44,7 @@ function parkMaterials(): Record<string, THREE.Material> {
     ChainLink: std({ map: T.chainLinkTexture(), alphaTest: 0.45, side: THREE.DoubleSide, metalness: 0.4, roughness: 0.5 }),
     Net: std({ map: T.netTexture(), alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.9 }),
     Rim: std({ color: '#e8531f', metalness: 0.3, roughness: 0.45 }),
-    Backboard: std({ color: '#f4f4f4', roughness: 0.35 }),
+    Backboard: std({ color: '#b6d4d5', roughness: 0.18, metalness: 0.1, transparent: true, opacity: 0.24, depthWrite: false }),
     BannerBack: std({ color: '#e9e6df' }),
     ScreenFrame: std({ color: '#15171e', roughness: 0.6 }),
     ShopGlass: std({ color: '#2b3a4a', roughness: 0.15, metalness: 0.2, emissive: new THREE.Color('#ffb86b'), emissiveIntensity: 0.35 }),
@@ -77,8 +77,8 @@ export function createPark(gltf: GLTF) {
     const replacement = materials[name];
     if (replacement) mesh.material = replacement;
     mesh.receiveShadow = name !== 'LampGlow';
-    mesh.castShadow = !['Asphalt', 'ParkGround', 'Sidewalk', 'LampGlow', 'CourtSurface'].includes(name);
-    if (name === 'ChainLink' || name === 'Net') mesh.userData.skipAO = true;
+    mesh.castShadow = !['Asphalt', 'ParkGround', 'Sidewalk', 'LampGlow', 'CourtSurface', 'Backboard'].includes(name);
+    if (name === 'ChainLink' || name === 'Net' || name === 'Backboard') mesh.userData.skipAO = true;
     let m: RegExpMatchArray | null;
     if (name === 'CourtSurface') hooks.court = mesh;
     else if (name === 'BigScreen') hooks.screen = mesh;
@@ -90,8 +90,13 @@ export function createPark(gltf: GLTF) {
 
   // Court surface with the lines and the court's name.
   const court = new CourtPainter();
+  const courtBump = T.surfaceBumpTexture('asphalt');
+  courtBump.repeat.set(18, 10);
+  const plasterBump = T.surfaceBumpTexture('plaster');
+  plasterBump.repeat.set(6, 2);
+  const vinylBump = T.surfaceBumpTexture('vinyl');
   if (hooks.court) {
-    hooks.court.material = std({ map: court.texture, roughness: 0.78 });
+    hooks.court.material = std({ map: court.texture, roughness: 0.93, bumpMap: courtBump, bumpScale: 0.025 });
     hooks.court.castShadow = false;
     hooks.court.userData.pick = (hit: THREE.Intersection): SpotRef | null =>
       hit.point.x ** 2 + hit.point.z ** 2 < 8 * 8 ? { kind: 'naming' } : null;
@@ -112,13 +117,13 @@ export function createPark(gltf: GLTF) {
     pickables.push(hooks.naming);
   }
 
-  if (hooks.graffiti) hooks.graffiti.material = std({ map: T.graffitiWallTexture(31), roughness: 0.95 });
+  if (hooks.graffiti) hooks.graffiti.material = std({ map: T.graffitiWallTexture(31), roughness: 0.95, bumpMap: plasterBump, bumpScale: 0.045 });
 
   const murals = MURAL_SLOTS.map((slot, i) => {
     const p = new Painted(768, Math.round((768 * slot.height) / slot.width));
     const mesh = hooks.murals[i];
     if (mesh) {
-      mesh.material = std({ map: p.texture, roughness: 0.92 });
+      mesh.material = std({ map: p.texture, roughness: 0.92, bumpMap: plasterBump, bumpScale: 0.04 });
       mesh.userData.pick = (): SpotRef => ({ kind: 'mural', index: i });
       pickables.push(mesh);
     }
@@ -129,7 +134,7 @@ export function createPark(gltf: GLTF) {
     const p = new Painted(512, Math.round((512 * slot.height) / slot.width));
     const mesh = hooks.banners[i];
     if (mesh) {
-      mesh.material = std({ map: p.texture, roughness: 0.75 });
+      mesh.material = std({ map: p.texture, roughness: 0.65, bumpMap: vinylBump, bumpScale: 0.015 });
       mesh.userData.pick = (): SpotRef => ({ kind: 'banner', index: i });
       pickables.push(mesh);
     }
@@ -152,6 +157,9 @@ export function createPark(gltf: GLTF) {
     update(t: number, dt: number, sb: Scoreboard) {
       screen.update(t, dt, sb);
     },
+    prepareCapture(ref: SpotRef) {
+      if (ref.kind === 'screen') screen.drawAdForCapture();
+    },
     flashScore(team: 0 | 1, points: number) {
       screen.flash(team, points);
     },
@@ -162,7 +170,7 @@ export type Park = ReturnType<typeof createPark>;
 
 /** Evening sky dome, sun, sky fill, fog and a soft environment for reflections. */
 export function createEnvironment(scene: THREE.Scene, renderer: THREE.WebGLRenderer) {
-  const sunDir = new THREE.Vector3(0.55, 0.42, 0.72).normalize();
+  const sunDir = new THREE.Vector3(-0.6, 0.58, 0.65).normalize();
   const sky = new THREE.Mesh(
     new THREE.SphereGeometry(1500, 32, 16),
     new THREE.ShaderMaterial({
@@ -170,9 +178,9 @@ export function createEnvironment(scene: THREE.Scene, renderer: THREE.WebGLRende
       depthWrite: false,
       fog: false,
       uniforms: {
-        top: { value: new THREE.Color('#3f4fb0') },
-        mid: { value: new THREE.Color('#d98bb0') },
-        horizon: { value: new THREE.Color('#ffb27a') },
+        top: { value: new THREE.Color('#687c99') },
+        mid: { value: new THREE.Color('#c9a9a2') },
+        horizon: { value: new THREE.Color('#f6c69a') },
         sunDir: { value: sunDir },
       },
       vertexShader: /* glsl */ `
@@ -200,31 +208,34 @@ export function createEnvironment(scene: THREE.Scene, renderer: THREE.WebGLRende
   sky.frustumCulled = false;
   scene.add(sky);
   scene.background = new THREE.Color('#e7a07e');
-  scene.fog = new THREE.Fog('#e3a489', 260, 1200);
+  scene.fog = new THREE.Fog('#cbaea2', 170, 660);
 
-  scene.add(new THREE.HemisphereLight('#b8c8ff', '#8a5a44', 1.25));
-  const sun = new THREE.DirectionalLight('#ffc38a', 3.4);
+  scene.add(new THREE.HemisphereLight('#aebcec', '#735256', 0.86));
+  const sun = new THREE.DirectionalLight('#ffd1a0', 3.2);
   sun.position.copy(sunDir).multiplyScalar(320);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(4096, 4096);
+  sun.shadow.mapSize.set(2048, 2048);
   const sc = sun.shadow.camera;
-  sc.left = -175;
-  sc.right = 175;
-  sc.top = 175;
-  sc.bottom = -175;
+  sc.left = -106;
+  sc.right = 106;
+  sc.top = 106;
+  sc.bottom = -106;
   sc.near = 60;
   sc.far = 720;
   sun.shadow.bias = -0.0004;
-  sun.shadow.normalBias = 0.35;
+  sun.shadow.normalBias = 0.12;
   scene.add(sun, sun.target);
-  const rim = new THREE.DirectionalLight('#8fa6ff', 0.5);
+  const rim = new THREE.DirectionalLight('#9ba7ff', 0.7);
   rim.position.set(-200, 120, -160);
   scene.add(rim);
 
   const pmrem = new THREE.PMREMGenerator(renderer);
   import('three/addons/environments/RoomEnvironment.js').then(({ RoomEnvironment }) => {
-    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    scene.environmentIntensity = 0.35;
+    const room = new RoomEnvironment();
+    scene.environment = pmrem.fromScene(room, 0.04).texture;
+    room.dispose();
+    pmrem.dispose();
+    scene.environmentIntensity = 0.23;
   });
   return { sun, sunDir };
 }

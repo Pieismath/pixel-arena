@@ -197,3 +197,11 @@ body.trailer #scene { cursor: none; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* Keep disclosure in exported cinematic footage, even when the shopping HUD is hidden. */
+.cinematic-disclosure { display: none; position: fixed; bottom: max(18px, env(safe-area-inset-bottom)); left: 20px; z-index: 20; pointer-events: none; font-size: 10px; letter-spacing: .06em; color: #f9f1dfbb; text-shadow: 0 1px 4px #000; }
+body.trailer .cinematic-disclosure { display: block; }
+@media (min-width: 701px) and (hover: hover) {
+  body.trailer .exit-trailer { opacity: 0; }
+  body.trailer .exit-trailer:hover, body.trailer .exit-trailer:focus-visible { opacity: 1; }
+}
