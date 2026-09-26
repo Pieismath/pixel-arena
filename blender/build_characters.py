@@ -117,15 +117,27 @@ for o,ratio in [(body,.70),(jersey,.82),(shoes,.85),(eyes,.65)]:
  active(o);dec=o.modifiers.new('Athlete runtime surface LOD','DECIMATE');dec.ratio=ratio
  bpy.ops.object.modifier_apply(modifier=dec.name)
 # Keep head landmarks realistic; variant morphs alter the face, not the body scale.
-body.shape_key_add(name='Basis')
-for name,width,jaw,nose in [('FaceBroad',1.09,1.09,1.025),('FaceLean',.93,.91,.98),('FaceStrong',1.025,1.15,1.06)]:
- key=body.shape_key_add(name=name)
- for v,k in zip(body.data.vertices,key.data):
-  p=v.co
-  if p.z>1.77:
-   influence=max(0,min(1,(p.z-1.77)/.08,(1.955-p.z)/.06));k.co.x*=1+(width-1)*influence
-   if p.z<1.88:k.co.x*=jaw
-   if abs(p.x)<.04 and p.y<-.09:k.co.y*=nose
+def face_variants(o):
+ # Copy immutable Basis coordinates explicitly: Blender's active shape-key data
+ # must never become the input to the next variant. Restrict variation to the jaw
+ # and lower nose; eyes, eyebrow ribbons, forehead, scalp and ears stay registered.
+ basis=[v.co.copy() for v in o.data.vertices]
+ o.shape_key_add(name='Basis')
+ def smooth(v):
+  t=max(0.,min(1.,v));return t*t*(3-2*t)
+ for name,width,nose,chin in [('FaceBroad',.085,.0008,.000),('FaceLean',-.075,-.0010,.0015),('FaceStrong',.11,.0025,-.0020)]:
+  key=o.shape_key_add(name=name)
+  for p,k in zip(basis,key.data):
+   k.co=p
+   if p.z<1.75 or p.z>=1.875 or abs(p.x)>=.082:continue
+   front=smooth((-p.y-.060)/.055)
+   safe=smooth((1.875-p.z)/.027)*smooth((.082-abs(p.x))/.020)
+   jaw=math.exp(-((p.z-1.815)/.043)**2)*front*safe
+   nose_weight=math.exp(-(p.x/.020)**4-((p.z-1.852)/.024)**4)*front*safe
+   k.co.x=p.x*(1+width*jaw)
+   k.co.y=p.y-nose*nose_weight
+   k.co.z=p.z+chin*jaw*math.exp(-(p.x/.045)**2)
+face_variants(body)
 # Cap meshes follow original skull topology, preserving the detailed facial silhouette.
 def scalp(name,style):
  o=body.copy();o.data=body.data.copy();o.name=name;scene.collection.objects.link(o)
@@ -151,15 +163,7 @@ if beard.data.shape_keys:beard.shape_key_clear()
 cut(beard,lambda p:not (1.765<p.z<1.851 and p.y<-.068 and (p.z<1.80 or abs(p.x)>.027)))
 for v in beard.data.vertices:v.co.y-=.002
 assign(beard,9)
-beard.shape_key_add(name='Basis')
-for name,width,jaw,nose in [('FaceBroad',1.09,1.09,1.025),('FaceLean',.93,.91,.98),('FaceStrong',1.025,1.15,1.06)]:
- key=beard.shape_key_add(name=name)
- for v,k in zip(beard.data.vertices,key.data):
-  p=v.co
-  if p.z>1.77:
-   influence=max(0,min(1,(p.z-1.77)/.08,(1.955-p.z)/.06));k.co.x*=1+(width-1)*influence
-   if p.z<1.88:k.co.x*=jaw
-   if abs(p.x)<.04 and p.y<-.09:k.co.y*=nose
+face_variants(beard)
 hair.append(beard)
 # Fabric headband follows a narrow scalp strip.
 headband=body.copy();headband.data=body.data.copy();headband.name='Headband';scene.collection.objects.link(headband)
