@@ -144,6 +144,21 @@ export function facadeTextures(brick: string, mortar: string, seed: number, lit 
   return { map: canvasTexture(map.canvas, [40, 40]), emissiveMap: canvasTexture(glow.canvas, [40, 40]) };
 }
 
+/** Eight-foot masonry tile; windows are modeled geometry, never repeated painted openings. */
+export function masonryTexture(base: string, seed: number) {
+  const S=512, rnd=mulberry32(seed), {canvas,ctx:c}=makeCanvas(S,S);
+  c.fillStyle='#706454'; c.fillRect(0,0,S,S);
+  const bw=43, bh=15;
+  for(let row=0,y=0;y<S;row++,y+=bh) for(let x=row%2?-bw/2:0;x<S;x+=bw) {
+    c.fillStyle=shade(base,.78+rnd()*.39);c.fillRect(x+1,y+1,bw-2,bh-2);
+    c.fillStyle='rgba(255,219,179,.10)';c.fillRect(x+1,y+1,bw-2,1);
+    c.fillStyle='rgba(18,15,13,.19)';c.fillRect(x+1,y+bh-2,bw-2,1);
+  }
+  grain(c,S,S,rnd,26000,['rgba(0,0,0,.08)','rgba(255,236,209,.07)'],[.4,1.4]);
+  for(let i=0;i<18;i++) {const x=rnd()*S,y=rnd()*S,g=c.createRadialGradient(x,y,0,x,y,60);g.addColorStop(0,'rgba(38,27,18,.12)');g.addColorStop(1,'rgba(38,27,18,0)');c.fillStyle=g;c.fillRect(x-60,y-60,120,120);}
+  return canvasTexture(canvas,[8,8]);
+}
+
 export function concreteTexture(base: string, seed: number, slabFeet = 5, tileFeet = 20) {
   const S = 256;
   const rnd = mulberry32(seed);

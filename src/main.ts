@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import './ui/styles.css';
 import { loadArenaState } from './data/api';
@@ -14,6 +15,7 @@ import { setMaxAnisotropy } from './world/textures';
 import { downloadSpotCard } from './ui/share';
 import { createMoments } from './world/moments';
 import { setMuralUnderpainting } from './world/signs';
+import { previewBrand } from './data/brand-preview';
 import { createGameplay } from './ui/gameplay';
 import { createRecording } from './ui/recording';
 import { createDiagnostics } from './ui/diagnostics';
@@ -111,6 +113,7 @@ async function main() {
   const manager = new THREE.LoadingManager();
   manager.onProgress = (_url, loaded, total) => (loadingText.textContent = `LOADING THE COURT… ${Math.round((loaded / total) * 100)}%`);
   const loader = new GLTFLoader(manager);
+  loader.setMeshoptDecoder(MeshoptDecoder);
   const base = import.meta.env.BASE_URL;
   const [parkGltf, ballerGltf, fansGltf] = await Promise.all([
     loader.loadAsync(`${base}models/park.glb`),
@@ -124,6 +127,12 @@ async function main() {
   scene.add(crowd.group);
   const game = new GameSim(ballerGltf);
   scene.add(game.group);
+  function cacheStaticShadows() {
+    game.group.traverse(object=>{if((object as THREE.Mesh).isMesh) object.castShadow=false;});
+    renderer.shadowMap.autoUpdate=false;
+    renderer.shadowMap.needsUpdate=true;
+  }
+  if(quality==='low') cacheStaticShadows();
   const moments = createMoments();
   scene.add(moments.group);
 
@@ -318,6 +327,7 @@ async function main() {
   let previewTimer = 0;
   function restorePreview() {
     window.clearTimeout(previewTimer);
+    document.getElementById('brand-preview-strip')!.hidden = true;
     if (!previewOriginal) return;
     state = previewOriginal;
     previewOriginal = null;
@@ -352,6 +362,13 @@ async function main() {
 
   const ui = createUI({
     focus, clearFocus, toggleTrailer, toggleDemo: () => void toggleDemo(), setView, playHighlight, previewTakeover,
+    previewBrand: (ref, brand, count) => {
+      restorePreview(); previewOriginal = state;
+      state = previewBrand(state,ref,brand,count); applyState(); ui.render(state); focus(ref);
+      document.getElementById('brand-preview-strip')!.hidden = false;
+      document.getElementById('brand-preview-label')!.textContent = `${brand.name} · local brand preview`;
+      crowd.cheer();
+    },
     onShare: async (ref) => {
       const previousPosition = camera.position.clone();
       const previousRotation = camera.quaternion.clone();
@@ -376,6 +393,7 @@ async function main() {
     },
   });
   ui.render(state);
+  document.getElementById('reset-brand-preview')!.addEventListener('click',restorePreview);
   const gameplay = createGameplay(game, () => setView('courtside'));
   const recording = createRecording(canvas, ui.showToast);
   function disableShadows() {
@@ -392,6 +410,7 @@ async function main() {
   function lowerGraphics() {
     if (post.quality === 'low') disableShadows();
     post.degrade();
+    if(renderer.shadowMap.enabled) cacheStaticShadows();
     sun.shadow.mapSize.set(1024, 1024);
     sun.shadow.map?.dispose();
     sun.shadow.map = null;
@@ -519,10 +538,15 @@ async function main() {
     const rawDt = (now - last) / 1000;
     const dt = Math.min(rawDt, 0.05);
     last = now;
-    const simDt = stillAt > 0 ? Math.max(0, Math.min(dt, stillAt - elapsed)) : dt;
+    const catchup = Math.min(Math.max(rawDt,0),.2);
+    const simDt = stillAt > 0 ? Math.max(0, Math.min(catchup, stillAt - elapsed)) : catchup;
     elapsed += simDt;
 
-    game.update(simDt, elapsed);
+    // Keep ball physics and animation contacts stable during slow presentation frames.
+    // Bound catch-up after a stall, then subdivide into the validated 60 Hz steps.
+    for(let remaining=simDt;remaining>1e-8;) {
+      const step=Math.min(remaining,1/60);game.update(step,elapsed-remaining+step);remaining-=step;
+    }
     park.update(elapsed, simDt, game);
     crowd.update(elapsed, simDt);
     moments.update(simDt);

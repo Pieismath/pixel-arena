@@ -1,3 +1,23 @@
+# Current voxel cast and city assets
+
+The shipped `baller.glb` and `fans.glb` now use original voxel/block geometry, stepped hairstyles, pixel faces, sneakers and basketball kits authored in `blender/build_voxel_characters.py`. The two user-supplied images are visual direction only; no source pixels, stock artwork or watermarks are embedded.
+
+The 55-bone rig uses the CC0 MakeHuman/MPFB game-engine skeleton. The 15 basketball animation clips and palm-contact sockets are project-authored and retained in `blender/sources/basketball-motion.blend`. [MakeHuman license](https://github.com/makehumancommunity/makehuman/blob/master/LICENSE.md).
+
+The city and cars are original Blender geometry in `blender/build_park.py`; masonry, glass, road and court textures are authored in code. The dense adjoining street blocks are an artistic interpretation, not an exact reconstruction of Rucker Park's surrounding buildings. The court retains the 2021 sand/charcoal direction.
+
+Build the cast with Blender 5.2:
+
+```sh
+/Applications/Blender.app/Contents/MacOS/Blender --background --factory-startup --python blender/build_voxel_characters.py
+```
+
+The main voxel body has 996 triangles; the most detailed optional hairstyle has 348. Crowd geometry is baked into 15 pose/style batches. The ball and its physical depth behavior are unchanged.
+
+## Earlier anatomical version retained in source history
+
+The previous `build_characters.py` and adult source blend remain available for reproducibility. Their original credits follow; this clothing and body geometry is no longer used by the shipped voxel cast.
+
 # Adult athlete source
 
 `adult-athlete-source.blend` is the editable bind-pose source used by `../build_characters.py`. It was generated in Blender 5.2 with MPFB from MakeHuman's continuous hm08 anatomical mesh and the game-engine skeleton. It contains separately modeled, weighted clothing and footwear, not primitive body parts.

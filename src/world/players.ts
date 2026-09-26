@@ -111,6 +111,8 @@ interface Player {
   height: number;
   depth: number;
   dunkGrip: THREE.Vector3;
+  contactShadow: ReturnType<typeof createBallContactShadow>;
+  feet: THREE.Object3D[];
 }
 
 interface Flight {
@@ -256,7 +258,7 @@ export class GameSim implements Scoreboard {
     if (this.pendingScenario && this.holder) { const scenario = this.pendingScenario; this.pendingScenario = null; this.runQaScenario(scenario); }
     this.think();
     for (const p of this.players) this.movePlayer(p, dt);
-    this.separate();
+    this.separate(dt);
     if (this.dunker) {
       this.dunkTime += dt;
       // The approach travels under the ball hand; all vertical movement is authored in the rig.
@@ -277,6 +279,12 @@ export class GameSim implements Scoreboard {
       p.root.rotation.y = p.heading;
     }
     this.group.updateMatrixWorld(true);
+    for(const p of this.players) {
+      let footHeight=0;
+      if(p.feet.length) footHeight=Math.min(...p.feet.map(foot=>{foot.getWorldPosition(this.tmp3);this.group.worldToLocal(this.tmp3);return this.tmp3.y;}));
+      p.contactShadow.position.set(p.pos.x,.071,p.pos.y);
+      p.contactShadow.material.opacity=.42/(1+Math.max(0,footHeight-.25)*.65);
+    }
     this.updateBall(dt);
     this.maxBallStep = Math.max(this.maxBallStep, this.previousBall.distanceTo(this.ballPos));
     if (this.holder && this.cinematicHold <= 0 && !this.dunker) this.featured = this.holder;
@@ -620,13 +628,20 @@ export class GameSim implements Scoreboard {
   private movePlayer(p: Player, dt: number) {
     this.tmp.copy(p.target).sub(p.pos);
     const dist = this.tmp.length();
-    const maxSpeed = p === this.holder ? (this.phase === 'drive' ? 18 : 13.5) : 15.5;
+    const maxSpeed = p === this.holder ? (this.phase === 'drive' ? 14 : 10.8) : 12.4;
     const desired = dist > 0.25 && p.busy <= 0 ? Math.min(maxSpeed, dist * 2.2) : p.current === 'Celebrate' ? Math.min(8, dist * 2) : 0;
     p.speed += (desired - p.speed) * (1 - Math.exp(-dt * 8));
-    if (dist > 0.001 && p.speed > 0.01) p.pos.addScaledVector(this.tmp.normalize(), Math.min(p.speed * dt, dist));
+    if (dist > 0.001 && p.speed > 0.01) {
+      // Turn before sprinting: bodies no longer skate sideways through sharp cuts.
+      const turn = Math.atan2(this.tmp.x,this.tmp.y)-p.heading;
+      const steering = p.team === this.offense ? .25+.75*Math.max(0,Math.cos(turn)) : 1;
+      const travel = Math.min(p.speed*steering*dt,dist);
+      p.pos.addScaledVector(this.tmp.normalize(),travel);
+      p.speed = travel / Math.max(dt,1e-5);
+    }
     const defending = p.team !== this.offense && p.speed < 3;
     const face = p.busy > 0 && p.aim !== null ? p.aim :
-      !defending && p.speed > 1.5 && dist > 0.25
+      !defending && desired > .1 && dist > 0.25
         ? Math.atan2(this.tmp.x, this.tmp.y)
         : Math.atan2(this.ballPos.x - p.pos.x, this.ballPos.z - p.pos.y);
     let delta = face - p.heading;
@@ -651,14 +666,14 @@ export class GameSim implements Scoreboard {
     else this.play(p, 'Idle');
   }
 
-  private separate() {
+  private separate(dt: number) {
     for (let i = 0; i < this.players.length; i++) {
       for (let j = i + 1; j < this.players.length; j++) {
         const a = this.players[i].pos;
         const b = this.players[j].pos;
         const d = a.distanceTo(b);
         if (d < 2.4 && d > 1e-4 && this.players[i] !== this.dunker && this.players[j] !== this.dunker) {
-          const push = (2.4 - d) * 0.5;
+          const push = Math.min((2.4 - d) * .5, dt * 2.5);
           this.tmp.copy(a).sub(b).divideScalar(d);
           const aPlanted = this.players[i].busy > 0, bPlanted = this.players[j].busy > 0;
           if (!aPlanted) a.addScaledVector(this.tmp, bPlanted ? push * 2 : push);
@@ -885,7 +900,7 @@ export class GameSim implements Scoreboard {
         if (index !== undefined) mesh.morphTargetInfluences[index] = .55 + (seed % 4) * .1;
       }
       if (/^(Hair|Headband)/.test(base)) mesh.visible = look.includes(base);
-      if (mesh.visible && mesh.isSkinnedMesh) outlines.push(mesh);
+      if (mesh.visible && mesh.isSkinnedMesh && !root.getObjectByName('VoxelAthlete')) outlines.push(mesh);
     });
     for (const mesh of outlines) {
       const outline = new THREE.SkinnedMesh(mesh.geometry, outlineMaterial);
@@ -926,7 +941,11 @@ export class GameSim implements Scoreboard {
     this.group.updateMatrixWorld(true);
     const dunkGrip = new THREE.Vector3(); hand.getWorldPosition(dunkGrip); this.group.worldToLocal(dunkGrip);
     mixer.stopAllAction(); actions.Idle.reset().play(); mixer.update(0);
+    const contactShadow=createBallContactShadow();contactShadow.name='player-contact-shadow';
+    contactShadow.scale.set(1.45,1.05,1);this.group.add(contactShadow);
+    const feet=['foot_l','foot_r'].map(name=>root.getObjectByName(name)).filter((o): o is THREE.Object3D => !!o);
     return {
+      contactShadow, feet,
       team,
       slot,
       root,

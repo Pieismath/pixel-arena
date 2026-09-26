@@ -1,6 +1,6 @@
 # Rucker Park — pickup basketball
 
-A playable, slightly stylized reconstruction of Rucker Park’s October 2021 reopening, built with Vite, TypeScript and three.js. Fictional brands can appear on crowd shirts and cards, fence banners, wall murals, the big screen and the court name. Every sellable surface is repainted from runtime data.
+A playable voxel streetball world with the sand/charcoal direction of Rucker Park’s 2021 court and a dense, art-directed Harlem neighborhood, built with Vite, TypeScript and three.js. Fictional brands can appear on crowd shirts and cards, fence banners, wall murals, the big screen and the court name. Every sellable surface is repainted from runtime data.
 
 This is a frontend preview. Checkout does not take payment or save ownership, and this build has not been published to a production domain. Demo brands, activity and preview prices are labeled in the interface, trailer and downloaded spot cards.
 
@@ -73,11 +73,11 @@ A development screenshot example is `http://localhost:5190/?demo=1&highlight=1&t
 
 ## Rendering and mobile behavior
 
-The court follows the sand/charcoal 2021 palette, close dark bleachers, central ochre stair, compact supported scoreboard, glass goals, tubular rims, rope nets, black fencing, mature branching trees and open Harlem streetscape. The arrangement is an artistic reconstruction from photographs, not a surveyed replica. See [reference notes](work/rucker-reference.md).
+The court follows the sand/charcoal 2021 palette, close dark bleachers, central ochre stair, compact supported scoreboard, glass goals, tubular rims, rope nets, black fencing, mature branching trees and open Harlem streetscape. The surrounding blocks are now deliberately denser than the original reconstruction, with modeled sash windows, storefronts, fire escapes, roof services and lofted cars. This is an artistic setting, not a surveyed replica. See [reference notes](work/rucker-reference.md).
 
-Athletes use continuous MakeHuman adult anatomy, a 55-bone skin, modeled clothing/footwear, individual fingers and face morphs. Palettes and procedural skin/fabric detail differentiate skin, hair, cloth and rubber. Fans use lower-detail baked meshes in instanced batches; reactions have independent timing. A subset of branded fans raises cards while others watch and clap.
+Athletes use original voxel meshes, stepped hairstyles, pixel faces and sneakers on the existing 55-bone basketball rig. Palettes and procedural skin/fabric detail differentiate skin, hair, cloth and rubber. Fans use lower-detail baked meshes in instanced batches; reactions have independent timing. A subset of branded fans raises cards while others watch and clap.
 
-Coarse-pointer devices and devices reporting 4 GB or less memory start in low quality. Low quality uses direct rendering without ambient occlusion or bloom, capped pixel density and smaller shadows. High quality adds contact shading, restrained bloom and a vignette. Unless a quality override is present, low measured frame rates can reduce quality further, lower render resolution and disable shadows. Animation pauses while the page is hidden. Reduced-motion preferences disable automatic courtside following and takeover confetti.
+Coarse-pointer devices and devices reporting 4 GB or less memory start in low quality. Low quality uses direct rendering without ambient occlusion or bloom, capped pixel density and a cached static neighborhood shadow map. Moving players retain contact shadows. High quality adds contact shading, restrained bloom and a vignette. Unless a quality override is present, low measured frame rates can reduce quality further, lower render resolution and disable shadows. Animation pauses while the page is hidden. Reduced-motion preferences disable automatic courtside following and takeover confetti.
 
 The three model downloads run together. Optional mural artwork loads after startup and leaves procedural murals usable if it fails; display fonts have system fallbacks. A graphics failure shows a static court preview with a lighter-graphics retry link.
 
@@ -88,11 +88,11 @@ These measures are not a smoothness guarantee. Physical iOS/Android phones, X's 
 The park, characters and animations are authored in Python for Blender 5.2, then exported as glTF into `public/models/`:
 
 ```bash
-/Applications/Blender.app/Contents/MacOS/Blender --background --factory-startup --python blender/build_characters.py -- public/models
+/Applications/Blender.app/Contents/MacOS/Blender --background --factory-startup --python blender/build_voxel_characters.py
 /Applications/Blender.app/Contents/MacOS/Blender --background --factory-startup --python blender/build_park.py -- public/models/park.glb
 ```
 
-`build_characters.py` produces `baller.glb` with Idle, Run, RunDribble, IdleDribble, Defend, Shuffle, Crossover, Pass, Catch, Shoot, Jump, Dunk, Land, Rebound and Celebrate clips, plus `fans.glb` with baked crowd poses. Region codes in vertex colors allow the browser to recolor players and each fan. Add `--preview work/character-previews` after the output directory to render character previews.
+`build_voxel_characters.py` produces `baller.glb` with Idle, Run, RunDribble, IdleDribble, Defend, Shuffle, Crossover, Pass, Catch, Shoot, Jump, Dunk, Land, Rebound and Celebrate clips, plus `fans.glb` with baked crowd poses. Region codes in vertex colors allow the browser to recolor players and each fan. Add `--preview work/character-previews` after the output directory to render character previews.
 
 `build_park.py` produces `park.glb` with the court, bleachers, fences, hoops, buildings, lights and trees. Static geometry is merged by material; sellable areas remain separate named surfaces (`CourtSurface`, `BigScreen`, `NamingSign`, `Mural_0..4`, `Banner_0..23`). Add `--preview work/park-preview.png` after the output path for a park preview. The scripts and browser share dimensions in `src/world/park-layout.json`; units are feet.
 
@@ -122,3 +122,16 @@ See [athlete attribution](public/models/ATTRIBUTION.md), [Rucker reference notes
 Before accepting purchases: implement an authenticated backend, persistent ownership, authoritative takeover pricing and concurrency rules, logo uploads and moderation, and payment/webhook handling. Checkout remains deliberately disconnected from payments. The current share image and takeover celebration are previews, not receipts or proof of ownership.
 
 Production hosting/domain setup has not been performed. Physical phone/network profiling and production asset delivery remain launch work. Local desktop and responsive-viewport measurements do not establish performance on a physical phone.
+
+## Business preview workflow
+
+Advertising inventory is visible on arrival. Choose Crowd seats, Banner, Mural, Screen or Court sponsor, then enter a business name, tagline and colors in **See your brand here**. Seats support 1-, 4- and 12-seat mock-ups. The preview repaints the actual live scene, including readable crowd cards. **Reset preview** restores the previous court. Download spot card captures the selected design. No preview reserves a spot, records a sale or takes payment.
+
+The neighborhood GLB uses Meshopt compression (34.33 MB raw → 8.48 MB shipped). After regenerating the park, run:
+
+```sh
+npx gltf-transform meshopt public/models/park.glb work/park-compressed.glb --quantize-position 16 --quantize-texcoord 16
+cp work/park-compressed.glb public/models/park.glb
+```
+
+`node tests/brand-preview.mjs` checks seat-block boundaries, repeat edits, sponsor surfaces and preservation of original state. `node tests/ball-regression.mjs` exercises the current voxel GLB and movement code.

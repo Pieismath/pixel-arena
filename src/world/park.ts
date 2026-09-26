@@ -11,11 +11,10 @@ const std = (p: THREE.MeshStandardMaterialParameters): Mat => new THREE.MeshStan
 const glow = (hex: string, strength: number) => new THREE.MeshBasicMaterial({ color: new THREE.Color(hex).multiplyScalar(strength) });
 
 function parkMaterials(): Record<string, THREE.Material> {
-  const red = T.facadeTextures('#745442', '#786755', 11, 0.04);
-  const tan = T.facadeTextures('#92795f', '#a58d73', 12, 0.04);
-  const gray = T.facadeTextures('#72726a', '#898678', 13, 0.04);
-  const facade = (f: { map: THREE.Texture; emissiveMap: THREE.Texture }) =>
-    std({ map: f.map, emissiveMap: f.emissiveMap, emissive: new THREE.Color('#ffc27a'), emissiveIntensity: 0.1, roughness: 0.92 });
+  const facade = (color: string, seed: number) => {
+    const map=T.masonryTexture(color,seed);
+    return std({map,bumpMap:map,bumpScale:.045,roughness:.94});
+  };
   const awning = (a: string, b: string) => {
     const t = T.stripeTexture(a, b, 3, true, 64);
     return std({ map: t, roughness: 0.8 });
@@ -32,9 +31,18 @@ function parkMaterials(): Record<string, THREE.Material> {
     RoadPaint: std({ color: '#d8d0ad', roughness: 0.96 }),
     Metal: std({ color: '#34383d', metalness: 0.35, roughness: 0.55 }),
     Padding: std({ map: T.stripeTexture('#1e2a28', '#263532', 4, true, 3), roughness: 0.88 }),
-    FacadeRed: facade(red),
-    FacadeTan: facade(tan),
-    FacadeGray: facade(gray),
+    FacadeRed: facade('#795044',11),
+    FacadeTan: facade('#998269',12),
+    FacadeGray: facade('#665e57',13),
+    WindowGlass: std({color:'#283e4a',roughness:.27,metalness:.40}),
+    WindowBlue: std({color:'#4b6570',roughness:.24,metalness:.38}),
+    WindowWarm: std({color:'#88785f',roughness:.48}),
+    WindowFrame: std({color:'#302f29',roughness:.73}),
+    CarGlass: std({color:'#233e4a',roughness:.18,metalness:.52}),
+    Chrome: std({color:'#a7b3b3',roughness:.28,metalness:.8}),
+    CarBody: std({color:'#293f48',roughness:.32,metalness:.4}),
+    CarRed: std({color:'#70362e',roughness:.32,metalness:.4}),
+    CarSilver: std({color:'#a2aca9',roughness:.28,metalness:.55}),
     Roof: std({ color: '#3b3539', roughness: 0.95 }),
     Cornice: std({ color: '#ddcfb8', roughness: 0.85 }),
     Wood: std({ map: T.stripeTexture('#7d5539', '#5a3b26', 1.2, true, 6), roughness: 0.85 }),

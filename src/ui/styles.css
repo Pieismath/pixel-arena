@@ -300,3 +300,33 @@ h1 { font-family: 'Inter', sans-serif; font-size: clamp(24px, 2.6vw, 37px); lett
 @media (max-width:700px) { .view-button { min-height:40px; } .show-spots #btn-demo, .show-spots #btn-leaders { display:block; } }
 
 @media (max-width:700px) { .chips { top:98px; } .ball-actions small { display:none; } }
+
+/* Marketplace-first presentation: inventory stays visible until the visitor chooses to play. */
+.business-promise { margin:6px 0 2px; font-size:15px; font-weight:600; color:#f2dfb6; }
+.advertise-button { background:#edbb61; border-color:#edbb61; color:#222b26; font-weight:800; }
+#chip-seats { display:block; }
+.brand-studio { margin:18px 0 12px; border-top:1px solid #25332c30; padding-top:16px; }
+.brand-studio summary { font-size:17px; font-weight:800; cursor:pointer; }
+.brand-studio p { font-size:12px; }
+.brand-studio label { display:flex; flex-direction:column; gap:5px; margin:10px 0; font-size:11px; font-weight:700; }
+.brand-studio input,.brand-studio select { box-sizing:border-box; width:100%; border:1px solid #26382e40; border-radius:3px; padding:10px; background:#fffdf5; color:#25342b; font:inherit; font-size:13px; }
+.brand-colors { display:flex; gap:16px; }
+.brand-colors label { flex:1; }
+.brand-colors input { height:38px; padding:3px; }
+.brand-studio small { display:block; color:#647066; font-size:10px; line-height:1.5; }
+.preview-brand-cta { background:#284f3d; }
+#brand-preview-strip { position:absolute; left:50%; top:103px; transform:translateX(-50%); display:flex; align-items:center; gap:14px; background:#f4c874; padding:8px 12px; color:#23352c; border-radius:3px; font-size:11px; pointer-events:auto; box-shadow:0 3px 12px #0003; }
+#brand-preview-strip[hidden] { display:none; }
+#brand-preview-strip button { color:inherit; border:0; background:transparent; text-decoration:underline; font-size:10px; }
+@media(max-width:700px) {
+ .business-promise { font-size:11px; margin-top:4px; }
+ .naming-line { font-size:8px; }
+ #chip-seats { display:none; }
+ .game-hud { top:143px; }
+ .chips { top:126px; }
+ .panel { top:178px; max-height:calc(100dvh - 262px); }
+ #brand-preview-strip { top:177px; width:calc(100% - 50px); justify-content:space-between; font-size:10px; }
+ body:has(#brand-preview-strip:not([hidden])) .panel { top:217px; max-height:calc(100dvh - 298px); }
+}
+
+@media(min-width:701px) { .show-spots .panel { max-height:calc(100dvh - 320px); z-index:2; } }

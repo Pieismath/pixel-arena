@@ -14,7 +14,7 @@ const pickColor = (list: string[], n: number) => new THREE.Color(list[Math.floor
 
 const SEATED = new Set(['Sit', 'Clap', 'Card']);
 // Where the card sits relative to a "Card" fan's origin (seat contact point), in the fan's frame.
-const CARD_OFFSET = new THREE.Vector3(0, 5.0, 0.6);
+const CARD_OFFSET = new THREE.Vector3(0, 1.78, 1.43);
 
 /** Standard material that colors each body region from per-instance palettes. */
 interface CrowdMotion {
@@ -56,7 +56,7 @@ function fanMaterial(motion: CrowdMotion) {
         else if (r == 5) c = vec3(0.92);
         else if (r == 6) c = vec3(0.03, 0.02, 0.025);
         else if (r == 7) c = vec3(0.86);
-        vFan = c;
+        vFan = c * (region.g > .1 ? region.g : 1.0);
         vFanPosition = position;
         vCloth = r == 1 ? 1.0 : 0.0;
         // All idle motion is local to the posed fan mesh. Instance matrices stay untouched
@@ -139,7 +139,17 @@ export function createCrowd(gltf: GLTF) {
   proxy.userData.pick = (hit: THREE.Intersection): SpotRef | null => (hit.instanceId === undefined ? null : seatRef(hit.instanceId));
   group.add(proxy);
 
-  const cards = new THREE.InstancedMesh(new THREE.BoxGeometry(2.05, 1.85, 0.08), new THREE.MeshStandardMaterial({ roughness: 0.6 }), SEATS.length);
+  const cardAtlas = document.createElement('canvas'); cardAtlas.width = cardAtlas.height = 1280;
+  const cardContext = cardAtlas.getContext('2d')!;
+  const cardTexture = new THREE.CanvasTexture(cardAtlas); cardTexture.colorSpace = THREE.SRGBColorSpace;
+  const cardMaterial = new THREE.MeshStandardMaterial({roughness:.8,map:cardTexture});
+  cardMaterial.onBeforeCompile = shader => {
+    shader.vertexShader = shader.vertexShader.replace('#include <common>','#include <common>\nattribute vec2 iCardTile;').replace('#include <uv_vertex>','#include <uv_vertex>\nvMapUv=(vMapUv+iCardTile)/20.0;');
+  };
+  const cardGeometry = new THREE.BoxGeometry(2.05,1.85,.08);
+  const cardTiles = new THREE.InstancedBufferAttribute(new Float32Array(SEATS.length*2),2);
+  cardGeometry.setAttribute('iCardTile',cardTiles);
+  const cards = new THREE.InstancedMesh(cardGeometry, cardMaterial, SEATS.length);
   cards.frustumCulled = false;
   cards.setColorAt(0, new THREE.Color('#ffffff'));
   const cardSeat = new Int32Array(SEATS.length);
@@ -177,7 +187,7 @@ export function createCrowd(gltf: GLTF) {
     SEATS.forEach((_s, i) => {
       const sale = sales.get(i);
       let pose: string;
-      if (sale && hash01(i * 59 + 9) > .78) pose = 'Card';
+      if (sale && (sale.brandId === 'local-business-preview' || hash01(i * 59 + 9) > .78)) pose = 'Card';
       else {
         const r = hash01(i * 3 + 7);
         if (!sale && r > 0.8) return; // empty seat
@@ -192,6 +202,7 @@ export function createCrowd(gltf: GLTF) {
     });
 
     cardCount = 0;
+    cardContext.clearRect(0,0,1280,1280);
     const tmpColor = new THREE.Color();
     let fanIndex = 0;
     for (const [key, seats] of plan) {
@@ -252,7 +263,15 @@ export function createCrowd(gltf: GLTF) {
         if (sale && pose === 'Card') {
           const cardPos = CARD_OFFSET.clone().applyQuaternion(q).add(v);
           cards.setMatrixAt(cardCount, m4.compose(cardPos, q, one));
-          cards.setColorAt(cardCount, tmpColor.set(sale.card));
+          cards.setColorAt(cardCount,tmpColor.set('#ffffff'));
+          const tx=cardCount%20, ty=Math.floor(cardCount/20), cx=tx*64, cy=ty*64;
+          cardTiles.setXY(cardCount,tx,19-ty);
+          cardContext.fillStyle=sale.card;cardContext.fillRect(cx,cy,64,64);
+          cardContext.fillStyle=brand?.accent ?? '#ffffff';cardContext.textAlign='center';cardContext.textBaseline='middle';
+          cardContext.font='900 13px Inter, sans-serif';
+          const words=(brand?.name ?? '').toUpperCase().split(' '), split=Math.ceil(words.length/2);
+          cardContext.fillText(words.slice(0,split).join(' '),cx+32,cy+26,57);
+          cardContext.fillText(words.slice(split).join(' '),cx+32,cy+41,57);
           cardSeat[cardCount] = si;
           cardBase[cardCount] = cardPos.y;
           cardFanLift[cardCount] = fanIndex + k;
@@ -269,6 +288,7 @@ export function createCrowd(gltf: GLTF) {
       fanIndex += seats.length;
     }
     cards.count = cardCount;
+    cardTiles.needsUpdate=true;cardTexture.needsUpdate=true;
     cards.instanceMatrix.needsUpdate = true;
     if (cards.instanceColor) cards.instanceColor.needsUpdate = true;
     cards.computeBoundingSphere();

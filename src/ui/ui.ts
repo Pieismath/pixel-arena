@@ -11,6 +11,7 @@ export interface UIHandlers {
   playHighlight?(): void;
   onShare?(ref: SpotRef): Promise<void>;
   previewTakeover?(): void;
+  previewBrand?(ref: SpotRef, brand: Brand, count: number): void;
 }
 
 const esc = (s: string) =>
@@ -57,6 +58,8 @@ export function createUI(handlers: UIHandlers) {
   let state: ArenaState;
   let selected: SpotRef | null = null;
   let sharing = false;
+  let draftSeats = 1;
+  let draft = { name: 'Your business', tagline: 'Made for this community.', url: '', color: '#d15332', accent: '#fff5df' };
   const seatSales = new Map<string, SeatSale>();
   let toastTimer = 0;
 
@@ -69,7 +72,7 @@ export function createUI(handlers: UIHandlers) {
 
     const naming = brandOf(state.naming.brandId);
     title.textContent = 'RUCKER PARK';
-    document.title = `Rucker Park · ${state.demo ? 'Fictional pickup game' : 'Court preview'}`;
+    document.title = 'Rucker Park · Your brand in the game';
     namingLine.textContent = naming
       ? `Demo presented by ${naming.name} ↗`
       : `Your name here · ${usd(state.naming.valueCents)} ↗`;
@@ -168,11 +171,36 @@ export function createUI(handlers: UIHandlers) {
       ${handlers.previewTakeover ? '<button class="share-button" data-takeover-preview type="button">Preview a court takeover <span aria-hidden="true">↗</span></button><p class="preview-footnote">A temporary fictional demo. No purchase or ownership change.</p>' : ''}`;
   }
 
+  function brandStudio(ref: SpotRef) {
+    return `<details class="brand-studio" open><summary>See your brand here</summary>
+      <p>Try your name and colors on the live court.</p>
+      <form id="brand-preview-form">
+        <label>Business name<input name="name" required maxlength="28" value="${esc(draft.name)}" autocomplete="organization"></label>
+        <label>Tagline<input name="tagline" maxlength="60" value="${esc(draft.tagline)}"></label>
+        <div class="brand-colors"><label>Brand color<input name="color" type="color" value="${esc(draft.color)}"></label><label>Lettering<input name="accent" type="color" value="${esc(draft.accent)}"></label></div>
+        ${ref.kind === 'seat' ? '<label>Crowd block<select name="seats"><option value="1">1 seat · $5 preview price</option><option value="4"'+(draftSeats===4?' selected':'')+'>4 seats · $20 preview price</option><option value="12"'+(draftSeats===12?' selected':'')+'>12 seats · $60 preview price</option></select></label>' : ''}
+        <button class="cta preview-brand-cta" type="submit">Preview my brand ↗</button>
+      </form><small>Local mock-up. No purchase or reservation.</small></details>`;
+  }
+
+  panelBody.addEventListener('submit', event => {
+    const form=event.target as HTMLFormElement;
+    if(form.id!=='brand-preview-form' || !selected) return;
+    event.preventDefault();
+    const data=new FormData(form);
+    draft={...draft,name:String(data.get('name')).trim().slice(0,28),tagline:String(data.get('tagline')).trim().slice(0,60),color:String(data.get('color')),accent:String(data.get('accent'))};
+    if(!draft.name) return;
+    draftSeats = Number(data.get('seats') || 1);
+    handlers.previewBrand?.(selected,{id:'local-business-preview',...draft},draftSeats);
+    showToast('Your brand is on the court. Download a spot card to share the idea.');
+  });
+
   function showSpot(ref: SpotRef) {
     selected = ref;
     leaders.hidden = true;
     leadersBtn.setAttribute('aria-expanded', 'false');
     panelBody.innerHTML = `${spotHtml(ref)}
+      ${handlers.previewBrand ? brandStudio(ref) : ''}
       ${handlers.onShare ? '<button class="share-button" data-share type="button">Download spot card <span aria-hidden="true">↓</span></button>' : ''}
       <p class="preview-footnote">${state.demo ? 'Fictional demo brands. ' : ''}Preview prices. Checkout is not live.</p>`;
     panel.hidden = false;

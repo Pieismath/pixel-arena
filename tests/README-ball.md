@@ -22,12 +22,12 @@ Throughout that reproduction the ball remained a single attached, visible, opaqu
 
 The regression validates authored animation coverage, numerical position continuity, ground clearance, exact pass/palm contact, ball lifetime/count, normal material depth behavior, parent transforms, and actual manual move/pass/shot inputs. It repeats dribble/pass/shot/miss/rebound/dunk/score/reset sequences at fixed and variable frame times. `evidence/ball-after.json` records results from the final production assets.
 
-## Verified shipped asset
+## Verified shipped voxel asset
 
-GLB SHA256: `0591752f0522bb29f7ea8c63e54d5caaa443aa2127e72d27763501be9a54f2a2`.
+GLB SHA256: `15ea5794c39089aac8e14a6c06520fe033e3530da03b7218e2cdc7ef0e77ad05`.
 
-The final run passed **47,310 simulated frames**, **148 pass catches at the exact animated palm**, **61 scoring sequences**, all 15 animation clips and every game phase. At 60 Hz over 480 seconds, maximum ball displacement was **0.76764 feet/frame** (46.06 feet/second), versus the reproduced original 20.823 feet/frame. At 30 Hz over another 240 seconds it was **1.49711 feet/frame**. Mixed 120/60/30/20 Hz scenarios peaked at 60.50 feet/second, with no loss, duplication, nonfinite position, court penetration or disabled depth testing. Parent-transform and manual-control scenarios also passed.
+The current voxel cast retains the 55-bone skeleton, all 15 clips and the exact palm-contact sockets. Its new block geometry is original project work. The regression passed **47,310 frames**, **131 exact palm catches**, and **55 scoring sequences** after the speed/turning and collision changes. Maximum ball movement was 0.72703 feet/frame at 60 Hz and 1.45511 at 30 Hz. Mixed 20–120 Hz tests, transformed parents and manual controls also passed.
 
-Measured support-foot drift during the planted half of a steady gait was **0.01120 feet for Run**, **0.01113 feet for RunDribble**, and **0.000494 feet for Shuffle**. The runtime scales cadence to authored ground travel and each athlete's dimensions. This measurement covers a steady gait, not every acceleration, turn or transition.
+Run stance remains calibrated to 9.36084 court feet/second and shuffle to 2.516097. The voxel meshes change appearance without moving the attachment bones. The runtime now advances slow rendered frames through bounded 60 Hz simulation steps, rather than discarding all time above 50 ms. Character contact shadows are separate from the authoritative ball object. Low quality caches static neighborhood shadows and keeps moving character contact shadows.
 
-The final suite also injects nonzero imported defaults for every facial morph and verifies that each athlete and outline retains exactly one selected face variant. Runtime clears inherited morph weights before applying that variant.
+The inherited facial-morph guard is retained for compatibility with the earlier anatomical asset; the voxel cast itself uses modeled pixel faces, without facial morph targets.
