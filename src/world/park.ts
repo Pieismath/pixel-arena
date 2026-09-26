@@ -38,7 +38,7 @@ function parkMaterials(): Record<string, THREE.Material> {
     Roof: std({ color: '#3b3539', roughness: 0.95 }),
     Cornice: std({ color: '#ddcfb8', roughness: 0.85 }),
     Wood: std({ map: T.stripeTexture('#7d5539', '#5a3b26', 1.2, true, 6), roughness: 0.85 }),
-    Foliage: std({ color: '#374d2c', side: THREE.DoubleSide, roughness: 0.98 }),
+    Foliage: std({ color: '#354b2d', side: THREE.DoubleSide, roughness: 0.98 }),
     FoliageLight: std({ color: '#5d713d', side: THREE.DoubleSide, roughness: 0.96 }),
     LeafOchre: std({ color: '#79804a', side: THREE.DoubleSide, roughness: 0.96 }),
     Bark: std({ map: T.barkTexture(), roughness: 0.99 }),
@@ -51,7 +51,7 @@ function parkMaterials(): Record<string, THREE.Material> {
     Backboard: std({ color: '#b6d4d5', roughness: 0.11, metalness: 0.05, transparent: true, opacity: 0.18, depthWrite: false }),
     BannerBack: std({ color: '#e9e6df' }),
     ScreenFrame: std({ color: '#15171e', roughness: 0.6 }),
-    ShopGlass: std({ color: '#2b3a4a', roughness: 0.15, metalness: 0.2, emissive: new THREE.Color('#ffb86b'), emissiveIntensity: 0.35 }),
+    ShopGlass: std({ map: T.shopGlassTexture(), roughness: 0.24, metalness: 0.32 }),
     Trim: std({ color: '#f2e8d8' }),
     Planter: std({ color: '#6b5a4a' }),
   };

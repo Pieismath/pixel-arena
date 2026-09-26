@@ -405,8 +405,12 @@ def city():
     for i,(z,h,fac) in enumerate([(-105,47,"FacadeTan"),(-61,52,"FacadeRed"),(-17,45,"FacadeTan"),(27,51,"FacadeGray"),(71,44,"FacadeRed")]):
         building(-158,-117,z,z+36,h,fac,fire_escape=(-116.7,z+18,"+x"))
         for zz in [z+8,z+27]:
-            box("ShopGlass",(-116.8,5,zz),(.2,7,12))
-            box("AwningGreen",(-115.5,9,zz),(3,.5,12))
+            box("ShopGlass",(-116.8,4.9,zz),(.18,6.7,12))
+            for dz in [-6,-2,2,6]: box("Metal",(-116.64,4.9,zz+dz),(.13,6.9,.11))
+            box("Metal",(-116.65,6.7,zz),(.14,.1,12))
+            box("Cornice",(-116.6,1.42,zz),(.4,.2,12.4))
+            box("AwningGreen",(-115.5,8.6,zz),(3,.5,12))
+            box("Metal",(-116.4,3.0,zz-1.55),(.14,.7,.08))
     building(123,156,66,102,40,"FacadeTan",fire_escape=(123,83,"-x"))
     building(159,195,66,102,46,"FacadeRed")
     # Freestanding score clock above the north stand, not a billboard on a building.
@@ -460,31 +464,36 @@ def lights_and_trees():
         bmesh.ops.transform(bm,matrix=matrix,verts=ret["verts"]);_finish(bm,ret["verts"],True)
     def leaves(center,radius):
         # Small low-poly leaf sprays break the crown silhouette and leave believable sky gaps.
-        for _ in range(185):
+        for _ in range(165):
             az=rng.random()*math.tau;u=rng.uniform(-1,1);rr=radius*(rng.random()**.33)
-            q=math.sqrt(1-u*u);c=B(center[0]+math.cos(az)*q*rr,center[1]+u*rr*.67,center[2]+math.sin(az)*q*rr)
+            q=math.sqrt(1-u*u);c=B(center[0]+math.cos(az)*q*rr,center[1]+u*rr*.90,center[2]+math.sin(az)*q*rr)
             bm=sbm(rng.choices(["Foliage","FoliageLight","LeafOchre"],[.58,.35,.07])[0])
             normal=Vector((rng.uniform(-1,1),rng.uniform(-1,1),rng.uniform(.15,1))).normalized()
             tx=normal.cross(Vector((0,0,1))).normalized();ty=normal.cross(tx)
-            size=rng.uniform(.36,.95)
+            size=rng.uniform(.28,.75)
             coords=[(-1,0),(-.45,.60),(.22,.7),(.9,.2),(1.1,0),(.1,-.55),(-.5,-.4)]
             vv=[bm.verts.new(c+tx*xx*size+ty*yy*size) for xx,yy in coords]
             f=bm.faces.new(vv);f.smooth=False
     spots=[(-49,-57,41),(-23,-57,43),(27,-59,46),(50,-58,43),(-63,-35,40),(63,-30,43),(64,31,39),(-63,32,44),(-62,60,39),(66,64,40)]
     for tx,tz,h in spots:
-        base=(tx,.2,tz);fork=(tx+rng.uniform(-1,1),h*.38,tz+rng.uniform(-1,1))
-        branch(base,fork,1.2,.66)
+        # A continuous curved leader, with boughs emerging at different heights.
+        # The former common-height radial fork made every tree an identical V shape.
+        leanx,leanz=rng.uniform(-2,2),rng.uniform(-2,2)
+        trunk=[(tx,.12,tz),(tx+.30,h*.18,tz-.2),(tx+leanx*.55,h*.38,tz+leanz*.6),(tx+leanx,h*.59,tz+leanz),(tx+leanx*1.25,h*.81,tz+leanz*1.2),(tx+leanx*.7,h*.99,tz+leanz*1.5)]
+        for k in range(len(trunk)-1): branch(trunk[k],trunk[k+1],1.32*(1-k*.17),1.13*(1-k*.18))
+        leaves(trunk[-1],5.8);leaves(trunk[-2],6.0)
         for j in range(6):
-            a=j*math.tau/6+rng.random()*.5
-            elbow=(fork[0]+math.cos(a)*rng.uniform(3,6),h*.61+rng.uniform(-2,2),fork[2]+math.sin(a)*rng.uniform(3,6))
-            tip=(fork[0]+math.cos(a)*rng.uniform(8,13),h*.81+rng.uniform(-3,5),fork[2]+math.sin(a)*rng.uniform(8,13))
-            branch(fork,elbow,.56,.28);branch(elbow,tip,.28,.08)
-            leaves(tip,6.4)
+            a=j*math.tau/6+rng.random()*.7
+            source=trunk[1+j%3]
+            elbow=(source[0]+math.cos(a)*rng.uniform(3,6),h*rng.uniform(.52,.76),source[2]+math.sin(a)*rng.uniform(3,6))
+            tip=(tx+math.cos(a)*rng.uniform(8,13),h*rng.uniform(.65,.98),tz+math.sin(a)*rng.uniform(8,13))
+            branch(source,elbow,.64 if j<3 else .46,.31);branch(elbow,tip,.31,.085)
+            leaves(tip,rng.uniform(5.0,6.8))
             for k in [-1,1]:
-                subt=(tip[0]+math.cos(a+k*.6)*4,tip[1]+rng.uniform(0,3),tip[2]+math.sin(a+k*.6)*4)
-                branch(elbow,subt,.16,.035);leaves(subt,4.7)
-        for j in range(4):
-            a=j*math.tau/4;branch((tx,.2,tz),(tx+math.cos(a)*2.2,.06,tz+math.sin(a)*2.2),.52,.07)
+                subt=(tip[0]+math.cos(a+k*.7)*4,tip[1]+rng.uniform(-2,4),tip[2]+math.sin(a+k*.7)*4)
+                branch(elbow,subt,.18,.035);leaves(subt,rng.uniform(4.2,5.5))
+        for j in range(5):
+            a=j*math.tau/5;branch((tx,.2,tz),(tx+math.cos(a)*2.6,.06,tz+math.sin(a)*2.6),.60,.07)
     for x in [-54,54]:
         for z in [-25,24]:
             cyl("Metal",(x,0,z),.9,2.8,segs=12)

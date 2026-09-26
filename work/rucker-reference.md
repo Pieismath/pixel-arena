@@ -38,3 +38,7 @@ The two photographs were opened with `view_image` from reference-only downloads 
 
 - Blender export completed successfully; offline geometry preview inspected (textures and crowd are assigned by runtime, so offline preview is geometry QA only).
 - `npm run build` passed after the geometry and court changes; integrated gameplay QA and performance measurement are performed by the coordinating agent.
+
+### Gameplay-camera refinement
+
+The first integrated gameplay screenshot was inspected. Warm emissive storefront windows looked like blank tan panels, so storefronts now use a dark four-pane glass texture with reflective streaks and quiet shelf detail, metal mullions and door hardware. Tree trunks now retain crooked continuous leaders with heavy boughs beginning at several heights, smaller leaf polygons and deeper overlapping foliage volumes; the former radial V-shaped branching has been removed. The leaf budget remains approximately unchanged. Exterior tree positions are preserved, with an unobstructed center/south camera lane.

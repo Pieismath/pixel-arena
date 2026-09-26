@@ -448,3 +448,28 @@ export function barkTexture() {
   grain(ctx, 256, 512, rnd, 4500, ['rgba(0,0,0,.12)', 'rgba(234,222,191,.10)'], [1, 2]);
   return canvasTexture(canvas, [3, 7]);
 }
+
+/** Unbranded neighborhood storefront / parked-car glazing. */
+export function shopGlassTexture() {
+  const { canvas, ctx } = makeCanvas(512, 256);
+  const rnd = mulberry32(122);
+  const g = ctx.createLinearGradient(0, 0, 0, 256);
+  g.addColorStop(0, '#52686b'); g.addColorStop(.43, '#334b51'); g.addColorStop(1, '#202f30');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, 512, 256);
+  // Faint shop interior, blinds and sky reflections, behind the glass.
+  for (let i = 0; i < 28; i++) {
+    ctx.fillStyle = i % 4 === 0 ? '#5a6860' : '#36433c';
+    ctx.fillRect(rnd() * 512, 160 + rnd() * 70, 8 + rnd() * 18, 12 + rnd() * 26);
+  }
+  ctx.fillStyle = 'rgba(192,202,182,.15)';
+  for (let i = 0; i < 3; i++) ctx.fillRect(0, 180 + i * 23, 512, 2);
+  ctx.strokeStyle = '#182827'; ctx.lineWidth = 8;
+  for (let x = 0; x <= 512; x += 128) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 256); ctx.stroke(); }
+  ctx.strokeRect(0, 0, 512, 256);
+  ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(0, 80); ctx.lineTo(512, 80); ctx.stroke();
+  ctx.fillStyle = 'rgba(166,186,179,.14)';
+  for (let x = 16; x < 512; x += 128) {
+    ctx.beginPath(); ctx.moveTo(x, 8); ctx.lineTo(x + 54, 8); ctx.lineTo(x + 28, 170); ctx.lineTo(x, 190); ctx.fill();
+  }
+  return canvasTexture(canvas, [12, 7]);
+}
