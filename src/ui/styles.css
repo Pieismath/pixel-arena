@@ -264,7 +264,7 @@ h1 { font-family: 'Inter', sans-serif; font-size: clamp(24px, 2.6vw, 37px); lett
 .ball-actions { display:flex; gap:8px; }
 .ball-actions button { padding:0 18px; font-size:12px; }
 .ball-actions small { display:block; font-size:8px; margin-top:4px; opacity:.55; }
-.playing .show-spots .spot-dock { display:none; }
+.playing.show-spots .spot-dock { display:none; }
 #audit-panel { position:fixed; z-index:40; right:20px; top:135px; width:350px; padding:10px; background:#18241eeb; color:#fff; font:10px/1.4 monospace; max-height:40vh; overflow:auto; }
 #audit-panel pre { white-space:pre-wrap; word-break:break-word; font:inherit; }
 #audit-panel button { font:inherit; background:#334439; border:1px solid #fff3; padding:6px; margin:2px; }
@@ -296,3 +296,5 @@ h1 { font-family: 'Inter', sans-serif; font-size: clamp(24px, 2.6vw, 37px); lett
   #audit-panel { right:8px; top:158px; max-width:calc(100vw - 16px); width:300px; font-size:8px; }
   .panel { top:164px; max-height:calc(100dvh - 248px); }
 }
+
+@media (max-width:700px) { .view-button { min-height:40px; } .show-spots #btn-demo, .show-spots #btn-leaders { display:block; } }

@@ -235,6 +235,7 @@ async function main() {
     controls.enabled = !trailer;
     hint.hidden = !trailer;
     if (trailer) {
+      gameplay.watch();
       hint.style.animation = 'none';
       void hint.offsetHeight;
       hint.style.animation = '';
@@ -304,6 +305,7 @@ async function main() {
   }
 
   function playHighlight() {
+    gameplay.watch();
     game.playHighlight();
     setView('courtside');
     crowd.startWave();

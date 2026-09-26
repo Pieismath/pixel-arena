@@ -1,6 +1,6 @@
-# The Court (working name)
+# Rucker Park — pickup basketball
 
-A stylized street-basketball court built with Vite, TypeScript and three.js. Fictional brands can appear on crowd shirts and cards, fence banners, wall murals, the big screen and the court name. Every sellable surface is repainted from runtime data.
+A playable, slightly stylized reconstruction of Rucker Park’s October 2021 reopening, built with Vite, TypeScript and three.js. Fictional brands can appear on crowd shirts and cards, fence banners, wall murals, the big screen and the court name. Every sellable surface is repainted from runtime data.
 
 This is a frontend preview. Checkout does not take payment or save ownership, and this build has not been published to a production domain. Demo brands, activity and preview prices are labeled in the interface, trailer and downloaded spot cards.
 
@@ -10,7 +10,7 @@ This is a frontend preview. Checkout does not take payment or save ownership, an
 | Banner | Vinyl banner on a sideline barrier or end fence; takeover at 1.25× its last price. | $25 |
 | Mural | Painted brand mural on the handball or corner-store wall; takeover at 1.25×. | $50 |
 | Big screen | A daily ad rotation between game scores. | $29/day |
-| Court name | Names center court, both sidelines, the building sign and the interface heading; takeover at 1.25×. | $100 |
+| Court name | Featured sponsor on center court, sidelines and scoreboard header; Rucker Park remains the location; takeover at 1.25×. | $100 |
 
 Prices and takeover rounding live in `src/config.ts`. The purchase model is illustrative until a backend and payments are implemented.
 
@@ -28,7 +28,7 @@ Blender is needed only to regenerate the included models, not to run the browser
 
 ## Explore and capture
 
-Drag the court to orbit, use the wheel or pinch to zoom, and click or tap a sellable spot. The bottom spot buttons and Spot holders panel offer another way to select seats, banners, murals, the screen and naming rights. On narrow screens, the bottom spot buttons scroll horizontally.
+Drag the court to orbit, use the wheel or pinch to zoom, and click or tap a sellable spot. The Brand spots button opens the spot dock; the Spot holders panel offer another way to select seats, banners, murals, the screen and naming rights. On narrow screens, the bottom spot buttons scroll horizontally.
 
 | Control | Behavior |
 |---|---|
@@ -38,12 +38,18 @@ Drag the court to orbit, use the wheel or pinch to zoom, and click or tap a sell
 | Play a highlight / `H` | Start a repeatable drive-and-dunk sequence and follow the action. |
 | Trailer / `T` | Run the cinematic camera sequence with the main interface hidden. A preview disclosure and exit control remain visible. |
 | Exit trailer / `T` / `Esc` | Leave the cinematic view. Outside trailer mode, `Esc` closes panels. |
-| `W` | Start a crowd wave. |
+| Take the ball | Switch from autoplay to controlling the player with possession. |
+| WASD / arrows | Move the ball handler in court coordinates. Touch uses the direction pad. |
+| Space / Shoot | Shoot, or dunk when near the rim. |
+| E / Pass | Pass to a teammate. |
+| Q / Crossover | Change hands. |
+| `W` outside manual play | Start a crowd wave. |
+| Record 12s | Record live WebGL gameplay locally and preview/save the video. Hiding the page stops the recording. |
 | Demo button | Switch between fictional occupied spots and the empty preview court. |
 | Download spot card | Open a PNG preview for the selected spot, then choose Save PNG or long-press on mobile. Uses a dedicated camera, brand details and preview disclosure. |
 | Preview a court takeover | In the court-name panel, temporarily rename the court to a fictional brand and celebrate. The original state returns after eight seconds. |
 
-Spot cards use the current viewport orientation: landscape cards are 1600×1000 and portrait cards are 1080×1350. They capture the 3D scene without the interface or selection highlight; screen cards show the ad rather than whichever score frame happens to be playing. Exports happen locally. Trailer mode is intended for screen recording; the app does not encode or publish video clips.
+Spot cards use the current viewport orientation: landscape cards are 1600×1000 and portrait cards are 1080×1350. They capture the 3D scene without the interface or selection highlight; screen cards show the ad rather than whichever score frame happens to be playing. Exports happen locally. Record 12s encodes a browser-supported WebM or MP4 clip from the actual renderer with a baked-in fictional-game label. It never uploads footage.
 
 The takeover preview makes no purchase or persistent state change. Only the Demo preference is stored locally when storage is available.
 
@@ -58,7 +64,8 @@ Options can be combined, for example `http://localhost:5190/?demo=1&view=courtsi
 | `view=overview` / `view=courtside` / `view=crowd` | Choose the initial camera view. Overview is the default. |
 | `highlight=1` | Start a highlight on load. |
 | `trailer=1` | Start in cinematic mode. |
-| `inspect=1` | Show approximate FPS, draw calls and triangle counts. Useful for local diagnostics, not a device benchmark. |
+| `inspect=1` | Show a 30-second frame-time sample after warm-up: FPS, median/p95 time, draw calls, triangles, viewport and quality. Use a forced quality tier for comparisons. |
+| `audit=1` | Expose visible controls for pass/make/miss/dunk/rebound/reset/crossover and the authoritative ball-state snapshot. |
 | `preview=1` | Open a labeled static preview with a link back to lighter interactive graphics. |
 | `still=<seconds>` | Development server only: stop simulation time at a positive number of seconds for repeatable screenshots. Ignored in production builds. |
 
@@ -66,7 +73,9 @@ A development screenshot example is `http://localhost:5190/?demo=1&highlight=1&t
 
 ## Rendering and mobile behavior
 
-The court uses worn mauve/teal acrylic paint, generated surface detail, layered murals, vinyl folds and eyelets, and an LED-style screen. Players have distinct proportions, runtime palettes, cloth detail and outlines. The instanced crowd adds individual breathing, gaze, clapping and arm motion, with larger waves and score reactions. Sold seats retain their brand colors and card-stunt alignment.
+The court follows the sand/charcoal 2021 palette, close dark bleachers, central ochre stair, compact supported scoreboard, glass goals, tubular rims, rope nets, black fencing, mature branching trees and open Harlem streetscape. The arrangement is an artistic reconstruction from photographs, not a surveyed replica. See [reference notes](work/rucker-reference.md).
+
+Athletes use continuous MakeHuman adult anatomy, a 55-bone skin, modeled clothing/footwear, individual fingers and face morphs. Palettes and procedural skin/fabric detail differentiate skin, hair, cloth and rubber. Fans use lower-detail baked meshes in instanced batches; reactions have independent timing. A subset of branded fans raises cards while others watch and clap.
 
 Coarse-pointer devices and devices reporting 4 GB or less memory start in low quality. Low quality uses direct rendering without ambient occlusion or bloom, capped pixel density and smaller shadows. High quality adds contact shading, restrained bloom and a vignette. Unless a quality override is present, low measured frame rates can reduce quality further, lower render resolution and disable shadows. Animation pauses while the page is hidden. Reduced-motion preferences disable automatic courtside following and takeover confetti.
 
@@ -83,7 +92,7 @@ The park, characters and animations are authored in Python for Blender 5.2, then
 /Applications/Blender.app/Contents/MacOS/Blender --background --factory-startup --python blender/build_park.py -- public/models/park.glb
 ```
 
-`build_characters.py` produces `baller.glb` with Idle, Run, RunDribble, IdleDribble, Defend, Shoot, Pass, Celebrate and Dunk clips, plus `fans.glb` with baked crowd poses. Region codes in vertex colors allow the browser to recolor players and each fan. Add `--preview work/character-previews` after the output directory to render character previews.
+`build_characters.py` produces `baller.glb` with Idle, Run, RunDribble, IdleDribble, Defend, Shuffle, Crossover, Pass, Catch, Shoot, Jump, Dunk, Land, Rebound and Celebrate clips, plus `fans.glb` with baked crowd poses. Region codes in vertex colors allow the browser to recolor players and each fan. Add `--preview work/character-previews` after the output directory to render character previews.
 
 `build_park.py` produces `park.glb` with the court, bleachers, fences, hoops, buildings, lights and trees. Static geometry is merged by material; sellable areas remain separate named surfaces (`CourtSurface`, `BigScreen`, `NamingSign`, `Mural_0..4`, `Banner_0..23`). Add `--preview work/park-preview.png` after the output path for a park preview. The scripts and browser share dimensions in `src/world/park-layout.json`; units are feet.
 
@@ -96,7 +105,9 @@ The park, characters and animations are authored in Python for Blender 5.2, then
 | `src/world/signs.ts` | Canvas painters for the court, banners, murals, screen and naming sign; optional mural underpainting. |
 | `src/world/textures.ts` | Generated surface maps, bump textures, typography helpers and basketball texture. |
 | `src/world/crowd.ts` | Instanced fan palettes, idle movement, card stunts, waves and cheers. |
-| `src/world/players.ts` | Scripted game, player materials, animation and highlight choreography. |
+| `src/world/players.ts` | Possession state machine, manual control, animation contacts and game choreography. |
+| `src/world/ball.ts` | Regulation-size leather ball and contact shadow. |
+| `src/ui/gameplay.ts`, `recording.ts`, `diagnostics.ts` | Keyboard/touch play, local video capture and visible regression/performance instrumentation. |
 | `src/world/moments.ts` | Temporary takeover confetti. |
 | `src/world/layout.ts` | Seat and panel positions derived from the shared park layout. |
 | `src/render/postfx.ts` | Graphics tiers, ambient occlusion, bloom, tone mapping and lower-resolution fallback. |
@@ -106,8 +117,8 @@ The park, characters and animations are authored in Python for Blender 5.2, then
 
 ## Assets and remaining work
 
-See [ASSET_SOURCES.md](ASSET_SOURCES.md) for model, generated artwork, font and software provenance and licenses. The supplied visual references are not distributed. Shipped characters, teams and demo brands are fictional; the mural underpainting is original generated art, with live brand content painted over it. Font and three.js license copies are in `public/licenses/`.
+See [athlete attribution](public/models/ATTRIBUTION.md), [Rucker reference notes](work/rucker-reference.md), and [ASSET_SOURCES.md](ASSET_SOURCES.md) for model, generated artwork, font and software provenance and licenses. Source photographs are not distributed. The location is real; shipped characters, teams and demo brands are fictional; the mural underpainting is original generated art, with live brand content painted over it. Font and three.js license copies are in `public/licenses/`.
 
 Before accepting purchases: implement an authenticated backend, persistent ownership, authoritative takeover pricing and concurrency rules, logo uploads and moderation, and payment/webhook handling. Checkout remains deliberately disconnected from payments. The current share image and takeover celebration are previews, not receipts or proof of ownership.
 
-Production hosting/domain setup has not been performed. Device/network profiling, asset compression and further character/animation polish remain launch work; this build does not claim visual parity with the supplied console-style references.
+Production hosting/domain setup has not been performed. Physical phone/network profiling and production asset delivery remain launch work. Local desktop and responsive-viewport measurements do not establish performance on a physical phone.

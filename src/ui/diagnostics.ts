@@ -21,9 +21,12 @@ export function createDiagnostics(game: GameSim, renderer: THREE.WebGLRenderer, 
   const samples: number[] = [];
   let collected = 0, next = 0;
   let drawCalls = 0, triangles = 0;
+  let tier = ''; 
   return {
     frame(dt: number, elapsed: number) {
-      if (elapsed > 8 && collected < 30 && dt > 0 && dt < .5) {
+      const currentTier = `${quality()}/${renderer.getPixelRatio()}/${renderer.shadowMap.enabled}`;
+      if (tier !== currentTier) { samples.length = 0; collected = drawCalls = triangles = 0; tier = currentTier; }
+      if (elapsed > 8 && collected < 30 && dt > 0) {
         samples.push(dt * 1000); collected += dt;
         drawCalls += renderer.info.render.calls; triangles += renderer.info.render.triangles;
       }
