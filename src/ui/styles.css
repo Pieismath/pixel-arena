@@ -236,3 +236,63 @@ body.trailer .cinematic-disclosure { display: block; }
   .trailer-hint { bottom: 46px; }
   .cinematic-disclosure { font-size: 8px; left: 16px; }
 }
+
+/* Keep the physical park and game at the center of the experience. */
+h1 { font-family: 'Inter', sans-serif; font-size: clamp(24px, 2.6vw, 37px); letter-spacing: -.055em; margin: 10px 0 5px; }
+.hud-top { padding-top: 23px; }
+.hud-right { gap: 9px; }
+.chips { gap: 12px; }
+#chip-seats, #demo-note { display: none; }
+#ui::before { height: 180px; background: linear-gradient(#142219ab, transparent); }
+#ui::after { height: 130px; }
+.spot-dock { display: none; }
+.show-spots .spot-dock { display: block; }
+.explore-bar { bottom: 31px; }
+.show-spots .explore-bar { bottom: 171px; }
+.game-actions { display: flex; gap: 9px; }
+.play-button { background: #d2ae64; color: #20261e; border-color: #dbc188; font-weight: 800; }
+.game-hud { position:absolute; top:31px; left:50%; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; gap:8px; text-shadow:0 2px 8px #000b; }
+.game-hud strong { font-size:12px; letter-spacing:.035em; font-variant-numeric:tabular-nums; }
+.game-hud span { font-size:8px; letter-spacing:.11em; color:#e4d9b9; }
+.panel { max-height: calc(100dvh - 240px); }
+#play-controls { position: absolute; left:32px; right:32px; bottom:95px; display:flex; justify-content:space-between; align-items:flex-end; pointer-events:none; }
+#play-controls button { pointer-events:auto; border:1px solid #fff3; border-radius:8px; background:#18241ec9; min-width:47px; height:44px; touch-action:none; user-select:none; }
+#play-controls button:active { background:#d2ae64; color:#20261e; }
+.direction-pad { display:grid; grid-template-columns:repeat(3,47px); gap:4px; }
+.direction-pad button:first-child { grid-column:2; }
+.direction-pad button:nth-child(2) { grid-column:1; }
+.ball-actions { display:flex; gap:8px; }
+.ball-actions button { padding:0 18px; font-size:12px; }
+.ball-actions small { display:block; font-size:8px; margin-top:4px; opacity:.55; }
+.playing .show-spots .spot-dock { display:none; }
+#audit-panel { position:fixed; z-index:40; right:20px; top:135px; width:350px; padding:10px; background:#18241eeb; color:#fff; font:10px/1.4 monospace; max-height:40vh; overflow:auto; }
+#audit-panel pre { white-space:pre-wrap; word-break:break-word; font:inherit; }
+#audit-panel button { font:inherit; background:#334439; border:1px solid #fff3; padding:6px; margin:2px; }
+@media (max-width:1100px) { .game-hud { top:126px; } }
+@media (max-width:700px) {
+  .hud-top { padding:18px 17px 0; }
+  .title-block { max-width:100%; }
+  .wordmark { font-size:8px; }
+  .preview-label { display:none; }
+  h1 { font-size:25px; }
+  .naming-line { font-size:9px; max-width:190px; }
+  .hud-right { max-width:160px; gap:6px; }
+  .toolbar { flex-wrap:wrap; gap:2px; }
+  .toolbar .pbtn { padding:7px 6px; font-size:9px; min-height:30px; }
+  #btn-leaders, #btn-demo { display:none; }
+  .chip { font-size:8px; }
+  .game-hud { top:119px; width:100%; }
+  .game-hud strong { font-size:11px; }
+  .game-hud span { font-size:8px; letter-spacing:.03em; }
+  .explore-bar { left:16px; right:16px; bottom:25px; flex-wrap:wrap; gap:9px; align-items:flex-end; }
+  .views { padding:3px; }
+  .view-button { font-size:9px; padding:7px 9px; }
+  .highlight-button { font-size:10px; padding:9px 11px; min-height:37px; }
+  #btn-highlight { display:none; }
+  .show-spots .explore-bar { bottom:158px; }
+  #play-controls { left:16px; right:16px; bottom:84px; }
+  .ball-actions { flex-direction:column; }
+  .ball-actions button { height:48px; }
+  #audit-panel { right:8px; top:158px; max-width:calc(100vw - 16px); width:300px; font-size:8px; }
+  .panel { top:164px; max-height:calc(100dvh - 248px); }
+}

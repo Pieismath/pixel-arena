@@ -14,6 +14,9 @@ import { setMaxAnisotropy } from './world/textures';
 import { downloadSpotCard } from './ui/share';
 import { createMoments } from './world/moments';
 import { setMuralUnderpainting } from './world/signs';
+import { createGameplay } from './ui/gameplay';
+import { createRecording } from './ui/recording';
+import { createDiagnostics } from './ui/diagnostics';
 
 const DEMO_KEY = 'street-court:demo';
 
@@ -46,7 +49,7 @@ function pickQuality(): Quality {
 
 const easeInOutCubic = (x: number) => (x < 0.5 ? 4 * x * x * x : 1 - (-2 * x + 2) ** 3 / 2);
 
-/** The open space between the buildings; below rooftop height the camera has to stay in it. */
+/** Bound free orbit to the playable park and its immediate streetscape. */
 function keepInsideStreets(p: THREE.Vector3) {
   if (p.y > 84) return;
   p.x = THREE.MathUtils.clamp(p.x, -72, 76);
@@ -91,7 +94,7 @@ async function main() {
   const homeView = () =>
     isPortrait()
       ? { camera: new THREE.Vector3(66, 70, 84), target: new THREE.Vector3(0, 2, -4) }
-      : { camera: new THREE.Vector3(46, 42, 68), target: new THREE.Vector3(-5, 4, -7) };
+      : { camera: new THREE.Vector3(46, 42, 68), target: new THREE.Vector3(0, 3, -4) };
   function fitCamera() {
     camera.fov = isPortrait() ? 60 : 45;
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -187,12 +190,9 @@ async function main() {
       const target = s.pos.clone().add(new THREE.Vector3(0, 3, 0));
       return { target, camera: target.clone().addScaledVector(toCourt, 36 * back).add(new THREE.Vector3(0, 12, 0)) };
     }
-    if (ref.kind === 'naming') {
-      return { target: new THREE.Vector3(0, 28, -52), camera: new THREE.Vector3(0, 40, 34 * back) };
-    }
     const slot = slotOf(ref)!;
-    const distance = ref.kind === 'banner' ? 24 : ref.kind === 'mural' ? 40 : 58;
-    const camera = slot.center.clone().addScaledVector(slot.normal, distance * back).add(new THREE.Vector3(0, ref.kind === 'screen' ? -10 : 7, 0));
+    const distance = ref.kind === 'banner' ? 21 : ref.kind === 'mural' ? 28 : 30;
+    const camera = slot.center.clone().addScaledVector(slot.normal, distance * back).add(new THREE.Vector3(0, ref.kind === 'screen' || ref.kind === 'naming' ? 0 : 5, 0));
     return { target: slot.center.clone(), camera };
   }
 
@@ -271,11 +271,11 @@ async function main() {
     if (stillAt > 0 || game.cinematicMode === 'drive' || game.cinematicMode === 'dunk' || (beat > 5 && beat < 15)) {
       actionView();
     } else if (beat >= 15 && beat < 20) {
-      wantPos.set(16 - (beat - 15) * 2, 9, -14);
-      wantTarget.set(-5, 9, -48);
+      wantPos.set(16 - (beat - 15) * 2, 7, -16);
+      wantTarget.set(-5, 7, -37);
     } else {
       const a = trailerT * 0.025 + 0.78;
-      wantPos.set(Math.cos(a) * 73, 31 + 4 * Math.sin(trailerT * 0.1), Math.sin(a) * 67);
+      wantPos.set(Math.cos(a) * 51, 27 + 3 * Math.sin(trailerT * 0.1), Math.sin(a) * 40);
       wantTarget.set(0, 7, -8);
     }
     const speed = game.cinematicMode === 'dunk' ? 3 : 1.4;
@@ -297,7 +297,7 @@ async function main() {
     followAction = view === 'courtside';
     controls.autoRotate = false;
     const shot = view === 'overview' ? homeView() : view === 'crowd'
-      ? { camera: new THREE.Vector3(14, 9, -16), target: new THREE.Vector3(0, 8, -46) }
+      ? { camera: new THREE.Vector3(14, 7, -17), target: new THREE.Vector3(0, 6, -37) }
       : (actionView(), { camera: wantPos.clone(), target: wantTarget.clone() });
     fly = { fromT: controls.target.clone(), toT: shot.target, fromP: camera.position.clone(), toP: shot.camera, t: 0 };
     ui.setView(view);
@@ -332,7 +332,7 @@ async function main() {
     ui.render(state);
     focus({kind: 'naming'});
     ui.hidePanels();
-    moments.group.position.set(0, 33, -62);
+    moments.group.position.copy(NAMING_SLOT.center);
     if (!reducedMotion) moments.start(brand.color, brand.accent);
     crowd.cheer();
     ui.showToast('Demo takeover preview · the original court returns in 8 seconds.');
@@ -374,6 +374,9 @@ async function main() {
     },
   });
   ui.render(state);
+  const gameplay = createGameplay(game, () => setView('courtside'));
+  const recording = createRecording(canvas, ui.showToast);
+  const diagnostics = createDiagnostics(game, renderer, () => post.quality);
 
   game.onScore = (team, points) => {
     park.flashScore(team, points);
@@ -455,7 +458,7 @@ async function main() {
         ui.hidePanels();
         clearFocus();
       }
-    } else if (key === 'w') crowd.startWave();
+    } else if (key === 'w' && !gameplay.manual) crowd.startWave();
     else if (key === '1') setView('overview');
     else if (key === '2') setView('courtside');
     else if (key === '3') setView('crowd');
@@ -477,12 +480,6 @@ async function main() {
   let firstFrame = true;
   let metricsTime = 0;
   let metricsFrames = 0;
-  const metrics = params.get('inspect') === '1' ? document.createElement('output') : null;
-  if (metrics) {
-    metrics.id = 'render-metrics';
-    metrics.style.cssText = 'position:fixed;z-index:80;bottom:140px;right:18px;background:#171a20dd;color:#fff;padding:8px;font:11px monospace;pointer-events:none';
-    document.body.append(metrics);
-  }
   let sampleTime = 0;
   let sampleFrames = 0;
   let adaptations = 0;
@@ -549,6 +546,9 @@ async function main() {
     }
     renderer.info.reset();
     post.render();
+    recording.frame();
+    gameplay.update();
+    diagnostics.frame(rawDt, elapsed);
     metricsTime += rawDt;
     metricsFrames++;
     if (metricsTime >= 2) {
@@ -557,7 +557,6 @@ async function main() {
       canvas.dataset.quality = post.quality;
       canvas.dataset.calls = String(renderer.info.render.calls);
       canvas.dataset.triangles = String(renderer.info.render.triangles);
-      if (metrics) metrics.textContent = `${post.quality} · ${fps} fps · ${renderer.info.render.calls} draws · ${(renderer.info.render.triangles / 1e6).toFixed(2)}M triangles`;
       metricsTime = 0;
       metricsFrames = 0;
     }

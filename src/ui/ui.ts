@@ -68,10 +68,10 @@ export function createUI(handlers: UIHandlers) {
     for (const s of state.seats) seatSales.set(seatKey(s.section, s.row, s.col), s);
 
     const naming = brandOf(state.naming.brandId);
-    title.textContent = `The ${naming ? naming.name : '______'} Court`;
-    document.title = `${naming ? `The ${naming.name} Court` : 'Street Court'} · ${state.demo ? 'Fictional demo' : 'Preview'}`;
+    title.textContent = 'RUCKER PARK';
+    document.title = `Rucker Park · ${state.demo ? 'Fictional pickup game' : 'Court preview'}`;
     namingLine.textContent = naming
-      ? `Make it yours for ${usd(takeoverPrice(state.naming.valueCents))} ↗`
+      ? `Demo presented by ${naming.name} ↗`
       : `Your name here · ${usd(state.naming.valueCents)} ↗`;
     namingTier.textContent = naming ? usd(takeoverPrice(state.naming.valueCents)) : usd(state.naming.valueCents);
     screenTier.textContent = `${usd(state.screen.dayPriceCents)}/day`;
@@ -148,7 +148,7 @@ export function createUI(handlers: UIHandlers) {
         <div class="badge">Big screen</div>
         <h2 id="panel-title">${brand ? 'On the big screen today' : 'Open today'}</h2>
         ${brand ? brandBlock(brand) : ''}
-        <p>The screen on the building over the court plays your ad between score updates. Rented by the day.</p>
+        <p>The courtside scoreboard shows a compact sponsor card between score updates. Rented by the day.</p>
         <p class="muted">Launching something new? Put your launch day up in lights.</p>
         <button class="cta" data-checkout>Pick a day · ${usd(state.screen.dayPriceCents)}/day</button>`;
     }
@@ -158,7 +158,7 @@ export function createUI(handlers: UIHandlers) {
       <div class="badge">Court name</div>
       <h2 id="panel-title">${brand ? `The ${esc(brand.name)} Court` : 'The ______ Court'}</h2>
       ${brand ? brandBlock(brand) : ''}
-      <p>One spot. Whoever holds it names the court: center court, the paint along both sidelines, the sign on the building, and the title of this page.</p>
+      <p>One featured sponsor spot: center court, sideline lettering, and the scoreboard header. Rucker Park remains the location of this fictional game.</p>
       ${
         brand
           ? `${stats(h, 'Renamed')}<button class="cta" data-checkout>Rename the court · ${usd(takeoverPrice(h.valueCents))}</button>`

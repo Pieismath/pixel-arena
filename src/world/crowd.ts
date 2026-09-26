@@ -177,10 +177,10 @@ export function createCrowd(gltf: GLTF) {
     SEATS.forEach((_s, i) => {
       const sale = sales.get(i);
       let pose: string;
-      if (sale) pose = 'Card';
+      if (sale && hash01(i * 59 + 9) > .78) pose = 'Card';
       else {
         const r = hash01(i * 3 + 7);
-        if (r > 0.8) return; // empty seat
+        if (!sale && r > 0.8) return; // empty seat
         const p = hash01(i * 5 + 1);
         pose = p < 0.42 ? 'Sit' : p < 0.76 ? 'Clap' : p < 0.90 ? 'Cheer' : 'Stand';
       }
@@ -249,7 +249,7 @@ export function createCrowd(gltf: GLTF) {
         pickColor(PANTS, si * 23 + 7).toArray(attrs.iPants, k * 3);
         pickColor(HAIR, si * 29 + 11).toArray(attrs.iHair, k * 3);
         pickColor(SHOES, si * 31 + 13).toArray(attrs.iShoe, k * 3);
-        if (sale) {
+        if (sale && pose === 'Card') {
           const cardPos = CARD_OFFSET.clone().applyQuaternion(q).add(v);
           cards.setMatrixAt(cardCount, m4.compose(cardPos, q, one));
           cards.setColorAt(cardCount, tmpColor.set(sale.card));
@@ -297,12 +297,12 @@ export function createCrowd(gltf: GLTF) {
         if (moving) {
           if (wave.active) {
             const c = Math.cos(b.theta[k] - wave.angle);
-            if (c > 0) l = c ** 14 * 1.8;
+            if (c > 0) l = c ** 14 * 0.22;
           }
           if (cheer > 0) {
             // Vary enthusiasm and timing so a cheer does not become a synchronized bounce.
             const enthusiasm = 0.35 + hash01(b.seat[k] * 53 + 1) * 0.65;
-            l += cheer * enthusiasm * Math.abs(Math.sin(t * 7 + b.phase[k])) * 0.65;
+            l += cheer * enthusiasm * Math.abs(Math.sin(t * 7 + b.phase[k])) * 0.10;
           }
         }
         lift[fanIndex + k] = l;
