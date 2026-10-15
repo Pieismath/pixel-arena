@@ -1,0 +1,126 @@
+{
+  "kind": "Current GLB/skeleton/mixer and runtime IK over120s60Hz autoplay. Foot velocity is measured at authored stance bones, not shoe-surface penetration. Texture decode stubbed; no rendering or device FPS.",
+  "broadStance": {
+    "samples": 30989,
+    "median": {
+      "frame": 1610,
+      "player": 1,
+      "clip": "Run",
+      "phase": 0.2132155519607414,
+      "velocity": 0.000006415074605454354,
+      "speed": 8.08769451506512,
+      "timeScale": 1.238270077343378,
+      "headingDelta": 0.00013345786951202143
+    },
+    "p95": {
+      "frame": 3523,
+      "player": 2,
+      "clip": "Run",
+      "phase": 0.20507134323771983,
+      "velocity": 4.454591739793948,
+      "speed": 3.3241540133996663,
+      "timeScale": 0.5164674541026418,
+      "headingDelta": 0.08333333333333326
+    },
+    "worst": {
+      "frame": 2871,
+      "player": 4,
+      "clip": "Run",
+      "phase": 0.412762832335124,
+      "velocity": 24.508804343840758,
+      "speed": 5.637630417955895,
+      "timeScale": 0.8387230926309872,
+      "headingDelta": -0.08333333333333348
+    }
+  },
+  "fullyWeightedStance": {
+    "samples": 23354,
+    "median": {
+      "frame": 3778,
+      "player": 3,
+      "clip": "Run",
+      "phase": 0.8575492361531052,
+      "velocity": 0.000004486770835440863,
+      "speed": 12.398181497600635,
+      "timeScale": 2.01564534369585,
+      "headingDelta": -1.411466721279453e-9
+    },
+    "p95": {
+      "frame": 5006,
+      "player": 1,
+      "clip": "Run",
+      "phase": 0.8418052066974111,
+      "velocity": 2.0182353007275013,
+      "speed": 4.284997242280252,
+      "timeScale": 0.6560564146841797,
+      "headingDelta": -0.0006697444820453757
+    },
+    "worst": {
+      "frame": 2871,
+      "player": 4,
+      "clip": "Run",
+      "phase": 0.412762832335124,
+      "velocity": 24.508804343840758,
+      "speed": 5.637630417955895,
+      "timeScale": 0.8387230926309872,
+      "headingDelta": -0.08333333333333348
+    }
+  },
+  "plantFrames": 33259,
+  "speedCalibrationMismatches": 0,
+  "dribble": {
+    "contacts": 59,
+    "maximumPalmErrorFeet": 7.105427357601002e-15,
+    "samples": [
+      {
+        "frame": 29,
+        "error": 4.440892098500626e-16,
+        "clip": "RunDribble",
+        "travelSpeed": 9.683992388612872
+      },
+      {
+        "frame": 89,
+        "error": 0,
+        "clip": "RunDribble",
+        "travelSpeed": 10.75688393253434
+      },
+      {
+        "frame": 149,
+        "error": 0,
+        "clip": "RunDribble",
+        "travelSpeed": 5.587437334724896
+      },
+      {
+        "frame": 209,
+        "error": 0,
+        "clip": "RunDribble",
+        "travelSpeed": 11.55853760079566
+      },
+      {
+        "frame": 269,
+        "error": 0,
+        "clip": "RunDribble",
+        "travelSpeed": 11.754089542936105
+      },
+      {
+        "frame": 707,
+        "error": 4.440892098500626e-16,
+        "clip": "IdleDribble",
+        "travelSpeed": 1.1243611670532454
+      },
+      {
+        "frame": 767,
+        "error": 0,
+        "clip": "RunDribble",
+        "travelSpeed": 5.577338939195947
+      },
+      {
+        "frame": 827,
+        "error": 0,
+        "clip": "RunDribble",
+        "travelSpeed": 5.61441316489838
+      }
+    ],
+    "periodSeconds": 1
+  }
+}

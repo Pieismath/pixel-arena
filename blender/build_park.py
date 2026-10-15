@@ -1,6 +1,6 @@
 """Builds the street-court park in Blender and exports public/models/park.glb.
 
-Static geometry is merged into one mesh per material (named Static_<Material>) so the web app
+Static geometry is merged per material and spatial sector (Static_<Sector>_<Material>) so the web app
 draws the whole park in a few dozen calls and can swap in its own textures by material name.
 Everything a brand can buy is its own named object with 0..1 UVs on its front face:
   CourtSurface, BigScreen, NamingSign, GraffitiWall, Mural_0..4, Banner_0..23
@@ -53,6 +53,12 @@ COLORS = {
     "WindowGlass": ("#283c46", .22), "WindowBlue": ("#47616b", .23), "WindowWarm": ("#897352", .45), "WindowFrame": ("#393833", .65), "CarGlass": ("#243d49", .19), "Chrome": ("#9caaae", .28), "TailLight": ("#9c2018", .28), "Headlight": ("#e5e6d7", .25),
     "FacadeCream": ("#c4b799", .88), "FacadeBrown": ("#715548", .9), "FacadePale": ("#aaada5", .88),
     "Trim": ("#f2e8d8", 0.8), "Planter": ("#6b5a4a", 0.9),
+    "InteriorShadow": ("#181b1a", .94), "InteriorPlaster": ("#504c43", .9),
+    "CurtainLinen": ("#aba393", .92), "CurtainWarm": ("#857367", .94),
+    "ShopInterior": ("#34362d", .92), "ShopShelf": ("#655b45", .86),
+    "DoorWood": ("#3b2c23", .72), "GlassPane": ("#9caba8", .16),
+    "PaintedIron": ("#242b2a", .67), "Limestone": ("#a99d89", .87),
+    "RoofFlashing": ("#666b66", .6), "PavingJoint": ("#5b5953", .95),
 }
 HOOK_COLORS = {"CourtSurface": "#c7ac81", "BigScreen": "#101018", "NamingSign": "#101426", "GraffitiWall": "#d9d1c5", "Mural": "#cfc8bb", "Banner": "#0f1326"}
 
@@ -85,6 +91,9 @@ def mat(name, hex_color=None, rough=0.85, emission=False):
     if emission or name in ("LampGlow",):
         bsdf.inputs["Emission Color"].default_value = (*c, 1)
         bsdf.inputs["Emission Strength"].default_value = 3.0
+    if name == "GlassPane":
+        bsdf.inputs["Alpha"].default_value = .14
+        m.surface_render_method = "DITHERED"
     if name == "Backboard":
         bsdf.inputs["Alpha"].default_value = .18
         m.surface_render_method = "DITHERED"
@@ -98,12 +107,14 @@ def mat(name, hex_color=None, rough=0.85, emission=False):
 # --------------------------------------------------------------------------------------------
 
 STATIC = {}
+STATIC_GROUP = "Park"
 
 
 def sbm(material):
-    if material not in STATIC:
-        STATIC[material] = bmesh.new()
-    return STATIC[material]
+    key = (STATIC_GROUP, material)
+    if key not in STATIC:
+        STATIC[key] = bmesh.new()
+    return STATIC[key]
 
 
 def world_uv(bm, faces):
@@ -151,6 +162,15 @@ def beam(material, p0, p1, thickness, bm=None):
     verts=[bm.verts.new(m @ Vector(co)) for co in [(-.5,-.5,-.5),(.5,-.5,-.5),(.5,.5,-.5),(-.5,.5,-.5),(-.5,-.5,.5),(.5,-.5,.5),(.5,.5,.5),(-.5,.5,.5)]]
     for face in [(0,3,2,1),(0,1,5,4),(1,2,6,5),(2,3,7,6),(3,0,4,7),(4,5,6,7)]:bm.faces.new([verts[i] for i in face])
     return _finish(bm,verts)
+
+
+def wire(material, p0, p1, radius=.012, segs=4):
+    """Thin round hardware kept at four radial segments, smooth normals; no box wires."""
+    bm=sbm(material);a,b=B(*p0),B(*p1);d=b-a
+    ret=bmesh.ops.create_cone(bm,cap_ends=False,segments=segs,radius1=radius,radius2=radius,depth=d.length)
+    tr=Matrix.Translation((a+b)/2)@d.to_track_quat('Z','Y').to_matrix().to_4x4()
+    bmesh.ops.transform(bm,matrix=tr,verts=ret['verts'])
+    return _finish(bm,ret['verts'],smooth=True)
 
 
 def cyl(material, bottom, radius, height, segs=12, bm=None, top_radius=None):
@@ -294,11 +314,12 @@ def barriers_and_banners():
             hook(f"Banner_{idx}",(sx*eb["x"]-sx*.25,eb["y"]+eb["height"]/2,z),eb["length"],eb["height"],facing,f"Banner_{idx}","BannerBack",depth=.045);idx+=1
 
 def fence():
+    global STATIC_GROUP
     f = L["fence"]
     h = f["height"]
     x, zn, zs = f["x"], f["north"], f["south"]
     runs = [((-x, zn), (x, zn)), ((x, zn), (x, zs)), ((x, zs), (-x, zs)), ((-x, zs), (-x, zn))]
-    for (x0, z0), (x1, z1) in runs:
+    for run_id,((x0, z0), (x1, z1)) in enumerate(runs):
         length = math.hypot(x1 - x0, z1 - z0)
         n = max(1, int(length // 10))
         for i in range(n + 1):
@@ -315,7 +336,36 @@ def fence():
         horizontal = abs(z1 - z0) < 1e-6
         cx, cz = (x0 + x1) / 2, (z0 + z1) / 2
         size = (length, h, 0.04) if horizontal else (0.04, h, length)
-        box("ChainLink", (cx, h / 2, cz), size)
+        if run_id==1:
+            # One actual galvanized diamond-wire panel for the representative slice.
+            # The separate alpha proxy allows runtime LOD without spending cage-wide tris.
+            for bay in range(n):
+                za=z0+(z1-z0)*bay/n;zb=z0+(z1-z0)*(bay+1)/n
+                if bay!=4:
+                    box('ChainLink',(x0,h/2,(za+zb)/2),(.04,h,zb-za))
+                    continue
+                STATIC_GROUP='HeroCageProxy'
+                box('ChainLink',(x0,h/2,(za+zb)/2),(.012,h,zb-za))
+                STATIC_GROUP='HeroCageWire'
+                w=zb-za
+                # 2-inch wire diamonds: physical wire diameter about 3.7mm.
+                pitch=.2357
+                for direction in [-1,1]:
+                    k=-h
+                    while k<=w:
+                        lo=max(0,-k);hi=min(h,w-k)
+                        if hi>lo:
+                            ua=k+lo;ub=k+hi
+                            if direction<0:ua=w-ua;ub=w-ub
+                            wire('Aluminum',(x0+direction*.008,lo,za+ua),(x0+direction*.008,hi,za+ub),.0061)
+                        k+=pitch
+                for zz in [za,zb]:
+                    wire('Aluminum',(x0,.2,zz),(x0,h-.2,zz),.04,segs=6)
+                    for yy in [1.0,5.0,10.0,15.0,18.5]:
+                        box('Aluminum',(x0,yy,zz),(.38,.10,.16))
+                STATIC_GROUP='Park'
+        else:
+            box("ChainLink", (cx, h / 2, cz), size)
 
 
 def hoops():
@@ -353,112 +403,290 @@ def hoops():
                 f=bm.faces.new([verts[i*steps+j],verts[((i+1)%segments)*steps+j],verts[((i+1)%segments)*steps+(j+1)%steps],verts[i*steps+(j+1)%steps]]);f.smooth=True
         box("Rim",(s*(rim["x"]+.97),rim["y"],0),(.62,.10,.28))
         box("Metal",(s*(hp["boardX"]-.17),10.05,0),(.10,.5,.65))
+        # Bolted mounting carrier and four corner clamps read at the close-up hoop view.
+        for yy in [10.05,13.17]:
+            for zz in [-2.8,2.8]:
+                box('Aluminum',(s*(hp['boardX']+.11),yy,zz),(.22,.31,.31))
+                box('Metal',(s*(hp['boardX']-.15),yy,zz),(.055,.10,.10))
+        for zz in [-1.0,1.0]:
+            beam('Metal',(s*(hp['boardX']+.30),12.7,zz),(s*(hp['poleX']),12.2,0),.14)
         for j in range(12):
             for direction in [-1,1]:
                 for row in range(5):
                     a=2*math.pi*j/12+direction*row*math.pi/12
                     a2=2*math.pi*j/12+direction*(row+1)*math.pi/12
                     r0=rr*(1-row*.065);r1=rr*(1-(row+1)*.065)
-                    beam("Net",(cx+math.cos(a)*r0,10-row*.32,math.sin(a)*r0),(cx+math.cos(a2)*r1,10-(row+1)*.32,math.sin(a2)*r1),.025)
+                    wire("Net",(cx+math.cos(a)*r0,10-row*.32,math.sin(a)*r0),(cx+math.cos(a2)*r1,10-(row+1)*.32,math.sin(a2)*r1),.0125,segs=4)
 
-def building(x0, x1, z0, z1, height, facade, water_tower=None, fire_escape=None, cornice=True):
-    cx, cz = (x0 + x1) / 2, (z0 + z1) / 2
-    w, d = x1 - x0, z1 - z0
-    box(facade, (cx, height / 2, cz), (w, height, d))
-    box("Roof", (cx, height + 0.2, cz), (w - 0.6, 0.4, d - 0.6))
-    if cornice:
-        box("Cornice", (cx, height - 0.7, cz), (w + 1.4, 1.4, d + 1.4))
-        box("Cornice", (cx, 12.5, cz), (w + 0.6, 0.8, d + 0.6))
-    # Each building has a distinct architectural rhythm and silhouette.
+def facade_quad(material, points):
+    """One surface rather than six hidden box faces; points supplied in app coordinates."""
+    bm = sbm(material)
+    vs = [bm.verts.new(B(*p)) for p in points]
+    face = bm.faces.new(vs)
+    world_uv(bm, [face])
+
+
+def harlem_building(x0, x1, z0, z1, height, facade, style=0, facing='+z', hero=False, fire_escape=True, residential=False):
+    """Original Harlem streetscape asset. Apertures are actual gaps in a masonry shell.
+
+    Local u runs across the frontage, p points out toward the street. The occupied room
+    bays sit 4.5 feet behind the facade; no opaque facade box intersects their openings.
+    Architecture references: NYC LPC Central Harlem designation report LP-2607 (2018).
+    """
+    cx, cz = (x0+x1)/2, (z0+z1)/2
+    vertical = facing in ('+x', '-x')
+    normal = 1 if facing in ('+x', '+z') else -1
+    span = (z1-z0) if vertical else (x1-x0)
+    fixed = (x1 if normal>0 else x0) if vertical else (z1 if normal>0 else z0)
+    def pt(u, y, p):
+        return (fixed+normal*p, y, cz+u*normal) if vertical else (cx+u*normal, y, fixed+normal*p)
+    def rect(material, u, y, p, w, h, d):
+        box(material, pt(u,y,p), (d,h,w) if vertical else (w,h,d))
+    def line(material, a, b, width):
+        beam(material, pt(*a), pt(*b), width)
+    def panel(material, u, y, p, w, h):
+        # Winding is deliberately outward on both x- and z-oriented fronts.
+        points = [pt(u-w/2,y-h/2,p),pt(u+w/2,y-h/2,p),pt(u+w/2,y+h/2,p),pt(u-w/2,y+h/2,p)]
+        if vertical: points.reverse()
+        facade_quad(material, points)
+
+    # Core set back five feet, plus side return walls. This is not a solid facade box.
+    if vertical:
+        lo, hi = (x0,x1-5) if normal>0 else (x0+5,x1)
+        box(facade, ((lo+hi)/2,height/2,cz), (hi-lo,height,z1-z0))
+    else:
+        lo, hi = (z0,z1-5) if normal>0 else (z0+5,z1)
+        box(facade, (cx,height/2,(lo+hi)/2), (x1-x0,height,hi-lo))
+    for u in [-span/2+.40,span/2-.40]: rect(facade,u,height/2,-2.5,.8,height,5)
+    box('Roof',(cx,height+.06,cz),(x1-x0-.5,.18,z1-z0-.5))
+    # Individual cast/pressed metal cornice profiles, with selective brackets.
+    for y,p,w,h,d in [(height-.85,.12,span+.4,.30,.55),(height-.38,.36,span+.95,.32,1.1),(height+.05,.58,span+1.3,.20,1.5)]:
+        rect('PaintedIron' if style%3==0 else 'Limestone',0,y,p,w,h,d)
+    for u in [-span/2+1.2,span/2-1.2]:
+        rect('Limestone',u,height-1.4,.3,.5,1.5,.7)
+    for j in range(max(2,int(span/4))):
+        u=-span/2+2+j*(span-4)/max(1,int(span/4)-1)
+        rect('PaintedIron' if style%3==0 else 'Limestone',u,height-.93,.38,.27,.82,.70)
+    for zz in [z0+.16,z1-.16]:box(facade,(cx,height+.9,zz),(x1-x0,1.6,.42))
+    for xx in [x0+.16,x1-.16]:box(facade,(xx,height+.9,cz),(.42,1.6,z1-z0))
+    for zz in [z0+.16,z1-.16]:box('RoofFlashing',(cx,height+1.76,zz),(x1-x0+.12,.12,.58))
+    box('Roof',(cx-3,height+2.6,cz-5),(7,5.2,8))
+    for k in range(2):
+        box(facade,(cx+span*.25,height+2,cz+2+k*4),(1.65,4,1.85))
+        box('RoofFlashing',(cx+span*.25,height+4.1,cz+2+k*4),(2.1,.2,2.3))
+
+    base = 12.2 if height>42 else 10.5
+    spacing = [10.25,10.8,9.6,11.1][style%4]
+    levels = max(1,int((height-base-1.5)/spacing))
+    spacing = (height-base-2.6)/levels
+    count = max(2,round(span/[7.7,8.4,9.0,7.2][style%4]))
+    step = span/count
+    width = min([3.65,4.1,4.3,3.4][style%4],step*.60)
+    win_h = min(6.25,spacing-2.65)
+    ys = [base+spacing*(k+.5) for k in range(levels)]
+    # Continuous wall bands and individual piers form a watertight facade around gaps.
+    bandbottom=base
+    for floor,y in enumerate(ys):
+        bottom,top=y-win_h/2,y+win_h/2
+        if bottom>bandbottom:rect(facade,0,(bandbottom+bottom)/2,-.5,span,bottom-bandbottom,1)
+        left=-span/2
+        for bay in range(count):
+            u=-span/2+(bay+.5)*step
+            if u-width/2>left:rect(facade,(left+u-width/2)/2,y,-.5,u-width/2-left,win_h,1)
+            left=u+width/2
+            # Deep jamb surfaces, recessed timber/metal sash and interior room volume.
+            rect('Limestone',u-width/2-.075,y,-.20,.15,win_h+.15,.70)
+            rect('Limestone',u+width/2+.075,y,-.20,.15,win_h+.15,.70)
+            rect('InteriorShadow',u,y,-4.90,width,win_h,.12)
+            for side in [-1,1]:rect('InteriorPlaster',u+side*(width/2-.04),y,-2.55,.08,win_h,4.6)
+            rect('InteriorPlaster',u,bottom+.02,-2.55,width,.08,4.6)
+            rect('InteriorPlaster',u,top-.02,-2.55,width,.08,4.6)
+            for side in [-1,1]:rect('WindowFrame',u+side*(width/2-.10),y,-.57,.19,win_h,.18)
+            for yy in [bottom+.10,y-.15,top-.10]:rect('WindowFrame',u,yy,-.52,width,.17,.19)
+            panel('GlassPane',u,y,-.63,width-.25,win_h-.24)
+            rect('Limestone',u,bottom-.15,.16,width+.56,.30,.90)
+            rect('Limestone',u,top+.23,.05,width+.65,.43,.65)
+            if style%3==1:
+                rect('Limestone',u,top+.53,.19,width+.95,.13,.75)
+                for side in [-1,1]:rect('Limestone',u+side*(width/2+.20),top+.05,.08,.22,.70,.56)
+            # Soft corrugated curtains are real folded planes inside the recess.
+            curtain = (bay*5+floor*3+style)%7
+            if curtain<5:
+                cw=width*(.17 if curtain<3 else .31)
+                for side in [-1,1]:
+                    start=u+width/2-.08-cw
+                    if side<0:start=u-width/2+.08
+                    for fold in range(4):
+                        fu=start+cw*(fold+.5)/4
+                        panel('CurtainWarm' if curtain==4 else 'CurtainLinen',fu,y,-1.03+(fold%2)*.10,cw/4+.02,win_h-.18)
+            elif curtain==5:
+                panel('CurtainLinen',u,top-win_h*.23,-.90,width-.2,win_h*.42)
+            # Occasional open lower sash and people remain behind the facade plane.
+            occupied=(hero and floor in (0,2) and bay==count-1) or (not hero and floor<2 and (bay*7+floor*13+int(cx+cz))%19==3)
+            if occupied:
+                pos=list(pt(u,bottom+.25,-.38))
+                yaw=(math.pi/2 if normal==1 else -math.pi/2) if vertical else (0 if normal==1 else math.pi)
+                NEIGHBORS.append({'position':pos,'yaw':yaw,'window':True})
+            if (bay+floor*3+style)%11==2 and floor<3:
+                rect('Aluminum',u,bottom+.55,.33,width*.71,.94,1.35)
+                for g in range(4):rect('WindowFrame',u,bottom+.24+g*.17,1.025,width*.61,.045,.035)
+        if left<span/2:rect(facade,(left+span/2)/2,y,-.5,span/2-left,win_h,1)
+        bandbottom=top
+    rect(facade,0,(bandbottom+height)/2,-.5,span,height-bandbottom,1)
+
+    if residential:
+        # Brownstone lower story: an elevated entrance with real reveals, not a shop clone.
+        door_u=0;door_w=3.4;door_bottom=1.95;door_top=min(base-.55,9.8)
+        wins=[(-span*.30,3.6),(span*.30,3.6)]
+        openings=sorted([(u-w/2,u+w/2,2.1,7.7) for u,w in wins]+[(-door_w/2,door_w/2,door_bottom,door_top)])
+        left=-span/2
+        for a,b,bt,tp in openings:
+            if a>left:rect('Limestone',(a+left)/2,base/2,-.5,a-left,base,1)
+            rect('Limestone',(a+b)/2,bt/2,-.5,b-a,bt,1)
+            rect('Limestone',(a+b)/2,(base+tp)/2,-.5,b-a,base-tp,1)
+            left=b
+        if left<span/2:rect('Limestone',(left+span/2)/2,base/2,-.5,span/2-left,base,1)
+        rect('Limestone',0,base+.10,.12,span+.15,.32,.70)
+        for u,ww in wins:
+            rect('InteriorShadow',u,4.9,-2.7,ww,5.6,.15)
+            panel('CurtainWarm' if style%2 else 'CurtainLinen',u,5.3,-1.05,ww-.4,4.8)
+            panel('GlassPane',u,4.9,-.65,ww-.18,5.4)
+            for du in [-ww/2+.09,ww/2-.09]:rect('WindowFrame',u+du,4.9,-.52,.16,5.6,.17)
+            for yy in [2.2,4.9,7.6]:rect('WindowFrame',u,yy,-.51,ww,.14,.17)
+            rect('Limestone',u,1.98,.16,ww+.58,.26,.85)
+            rect('Limestone',u,7.95,.11,ww+.76,.4,.70)
+            if style%2==0:
+                for j in range(6):rect('PaintedIron',u-ww/2+.2+j*(ww-.4)/5,3.1,.50,.038,2.2,.038)
+                for yy in [2.05,4.15]:rect('PaintedIron',u,yy,.50,ww,.06,.06)
+        rect('InteriorShadow',0,(door_top+door_bottom)/2,-1.6,door_w,door_top-door_bottom,.15)
+        rect('DoorWood',0,(door_top+door_bottom)/2,-.88,door_w-.20,door_top-door_bottom-.18,.2)
+        for u in [-.78,.78]:
+            for yy in [3.15,5.55]:rect('DoorWood',u,yy,-.74,1.19,1.7,.12)
+        panel('GlassPane',0,door_top-.65,-.70,door_w-.5,.9)
+        rect('Chrome',1.12,4.95,-.57,.07,.70,.10)
+        for u in [-door_w/2-.25,door_w/2+.25]:rect('Limestone',u,(base+1.8)/2,.03,.5,base-1.8,.85)
+        rect('Limestone',0,door_top+.25,.25,door_w+1.5,.5,1.4)
+        # Six measured 4-inch rises with deep run, capped by a small landing.
+        for j in range(6):rect('Limestone',0,(j+1)*.325/2,3.8-j*.52,4.8,(j+1)*.325,.64)
+        rect('Limestone',0,1.02,.77,4.8,2.04,1.2)
+        for side in [-1,1]:
+            for j in range(5):rect('PaintedIron',side*2.23,1.6+j*.31,3.85-j*.69,.055,2.6,.055)
+            line('PaintedIron',(side*2.23,2.88,3.9),(side*2.23,4.40,.6),.07)
+        for u in [-span/2+.55,span/2-.55]:
+            rect('Limestone',u,1.5,2.5,.8,3,.8)
+            rect('Limestone',u,3.06,2.5,1,.18,1)
+    else:
+        # Distinct ground-floor opening proportions: one shop and one inset residential door.
+        door_u=span*.31 if style%2==0 else -span*.32
+        door_w=3.4;door_h=8.6 if base>11 else 8
+        shop_u=-span*.12 if style%2==0 else span*.12
+        shop_w=span*.56
+        openings=sorted([(shop_u-shop_w/2,shop_u+shop_w/2,.55,8.85),(door_u-door_w/2,door_u+door_w/2,.35,door_h+.35)])
+        left=-span/2
+        for a,b,bt,tp in openings:
+            if a>left:rect('Limestone',0.5*(a+left),base/2,-.5,a-left,base,1)
+            rect('Limestone',(a+b)/2,bt/2,-.5,b-a,bt,1)
+            rect('Limestone',(a+b)/2,(base+tp)/2,-.5,b-a,base-tp,1)
+            left=b
+        if left<span/2:rect('Limestone',(left+span/2)/2,base/2,-.5,span/2-left,base,1)
+        rect('Limestone',0,base+.12,.12,span+.4,.42,.60)
+        rect('ShopInterior',shop_u,4.55,-4.9,shop_w,8,.12)
+        for u in [shop_u-shop_w/2,shop_u+shop_w/2]:rect('ShopInterior',u,4.65,-2.5,.14,8.1,5)
+        rect('ShopShelf',shop_u,.54,-2.55,shop_w,.12,4.8)
+        for yy in [2,4.1,6.2]:
+            rect('ShopShelf',shop_u,yy,-4.10,shop_w-.9,.13,.85)
+            if hero:
+                for j in range(7):
+                    rect('CurtainWarm' if j%3 else 'CurtainLinen',shop_u+(j-3)*(shop_w-1)/7,yy+.38,-4.08,.45,.70,.46)
+        for u in [shop_u-shop_w/2+.09,shop_u,shop_u+shop_w/2-.09]:rect('PaintedIron',u,4.7,-.30,.17,8.3,.20)
+        for yy in [.6,7.2,8.75]:rect('PaintedIron',shop_u,yy,-.30,shop_w,.16,.22)
+        panel('GlassPane',shop_u,4.65,-.40,shop_w-.2,8.1)
+        # Canvas awning is pitched fabric on a light iron frame, not a giant horizontal box.
+        awning='AwningGreen' if style%2 else 'AwningRed'
+        pts=[pt(shop_u-shop_w/2-.2,10.1,.15),pt(shop_u+shop_w/2+.2,10.1,.15),pt(shop_u+shop_w/2+.2,9.1,2.4),pt(shop_u-shop_w/2-.2,9.1,2.4)]
+        facade_quad(awning,pts[::-1] if not vertical else pts)
+        rect(awning,shop_u,8.9,2.4,shop_w+.4,.4,.06)
+        for u in [shop_u-shop_w/2,shop_u+shop_w/2]:line('PaintedIron',(u,9.95,.1),(u,9.02,2.4),.055)
+        # Recessed paneled residential entrance, transom, brass pull, entry light and buzzer.
+        rect('InteriorShadow',door_u,4.6,-2.45,door_w,9,.12)
+        rect('DoorWood',door_u,4.0,-1.60,door_w-.20,7.4,.20)
+        for side in [-1,1]:
+            rect('Limestone',door_u+side*(door_w/2+.18),4.85,-.04,.40,9.25,.8)
+            for yy in [1.5,4.2]:rect('DoorWood',door_u+side*.73,yy,-1.43,1.19,2.1,.12)
+        panel('GlassPane',door_u,7.2,-1.44,door_w-.60,1.20)
+        rect('Chrome',door_u+1.13,3.6,-1.26,.07,.80,.12)
+        rect('PaintedIron',door_u-door_w/2-.55,4.5,.05,.36,.75,.10)
+        rect('Limestone',door_u,9.60,.10,door_w+.95,.36,1.15)
+        rect('Limestone',door_u,.20,.65,door_w+1.0,.40,2.2)
+        rect('PaintedIron',door_u+door_w/2+.6,7.1,.42,.35,.72,.5)
+        rect('CurtainLinen',door_u+door_w/2+.6,7.12,.71,.25,.5,.04)
+
+
+    if fire_escape and levels>2:
+        escape_u=-step*.30
+        platform_w=min(11.8,span*.56)
+        for k,y in enumerate(ys):
+            fy=y-win_h/2-.26
+            for p in [.55,3.50]:rect('PaintedIron',escape_u,fy,p,platform_w,.17,.13)
+            for j in range(12):rect('PaintedIron',escape_u-platform_w/2+(j+.5)*platform_w/12,fy,2.02,.07,.10,2.95)
+            rect('PaintedIron',escape_u,fy+3.2,3.5,platform_w,.08,.08)
+            for j in range(8):rect('PaintedIron',escape_u-platform_w/2+j*platform_w/7,fy+1.6,3.5,.055,3.2,.055)
+            for su in [-1,1]:
+                u=escape_u+su*platform_w/2
+                line('PaintedIron',(u,fy+3.2,.35),(u,fy+3.2,3.5),.08)
+                line('PaintedIron',(u,fy-1.5,.0),(u,fy,3.35),.12)
+            if k<len(ys)-1:
+                rising=1 if k%2==0 else -1
+                u0=escape_u-rising*4.1;u1=escape_u+rising*4.1
+                for pp in [1.4,3.15]:
+                    line('PaintedIron',(u0,fy,pp),(u1,fy+spacing,pp),.12)
+                    line('PaintedIron',(u0,fy+2.8,pp),(u1,fy+spacing+2.8,pp),.065)
+                for j in range(14):
+                    u=u0+(u1-u0)*(j+.5)/14;yy=fy+spacing*(j+.5)/14
+                    rect('PaintedIron',u,yy,2.275,.68,.075,1.9)
+            elif hero:
+                u=escape_u+platform_w/2
+                for su in [-.45,.45]:line('PaintedIron',(u+su,fy,1),(u+su,height+2,1),.07)
+                for yy in range(int(fy),int(height+2)):rect('PaintedIron',u,yy,1,.95,.06,.06)
+
+
+def building(x0,x1,z0,z1,height,facade,water_tower=None,fire_escape=None,cornice=True):
+    # Street-facing elevation gets actual architectural depth. Party walls and far backs
+    # remain plain masonry instead of thousands of fully modeled hidden windows.
+    facing=('+z' if z1<0 else '-z') if abs((x0+x1)/2)<100 or z1<-89 or z0>90 else ('+x' if x1<0 else '-x')
+    if fire_escape: facing=fire_escape[2]
     style=int(abs(x0*3+z0*7))%4
-    floor_step=[9.4,10.8,8.7,11.2][style]
-    floors=max(1,int((height-11)/floor_step))
-    if style==1:
-        for xx in [x0+.8,x1-.8]:box('Cornice',(xx,height*.5,z1+.16),(1.4,height,.45))
-        for yy in range(13,int(height),11):box('Cornice',(cx,yy,z1+.22),(w,.40,.65))
-    elif style==2:
-        box(facade,(cx,height+3,cz),(w*.58,6,d*.60))
-        box('Cornice',(cx,height+6,cz),(w*.62,.5,d*.63))
-    elif style==3:
-        for xx in [x0+1,x1-1]:box('Cornice',(xx,height/2,z1+.3),(1,height+2,.8))
-        for j in range(5):box('Cornice',(cx+(j-2)*1.3,height+1.1-abs(j-2)*.3,z1),(1.1,2.2,.9))
-    for front,span,fixed,normal in [('z',w,z1,1),('z',w,z0,-1),('x',d,x1,1),('x',d,x0,-1)]:
-        count=max(2,round(span/[7.6,9.8,6.5,10.5][style]));step=span/count
-        for floor in range(floors):
-            y=15.7+floor*floor_step
-            if y+3.1>height-2:continue
-            for bay in range(count):
-                u=(cx if front=='z' else cz)-span/2+(bay+.5)*step
-                def rect(material,du,yy,projection,ww,hh,dd):
-                    center=(u+du,yy,fixed+normal*projection) if front=='z' else (fixed+normal*projection,yy,u+du)
-                    size=(ww,hh,dd) if front=='z' else (dd,hh,ww)
-                    box(material,center,size)
-                ww=min([3.8,5.7,3.2,5.2][style],step*.65)
-                rect('WindowFrame',0,y,.06,ww+.5,6.15,.14)
-                rect(rng.choice(['WindowGlass','WindowGlass','WindowBlue','WindowWarm']),0,y,.15,ww,5.72,.055)
-                for du in [-ww/2,ww/2]:rect('WindowFrame',du,y,.22,.10,5.9,.14)
-                rect('WindowFrame',0,y,.23,ww,.12,.14)
-                rect('Cornice',0,y+3.18,.20,ww+.8,.38,.50)
-                rect('Cornice',0,y-3.08,.32,ww+.75,.30,.75)
-                # Occupied windows facing the court, with people behind a sill/rail.
-                facing_court=(front=='z' and ((fixed<0 and normal==1) or (fixed>90 and normal==-1))) or (front=='x' and abs(fixed)<=106 and ((fixed<0 and normal==1) or (fixed>0 and normal==-1)))
-                if facing_court and floor<3 and rng.random()<.15:
-                    pos=[u,y-1.35,fixed+normal*.75] if front=='z' else [fixed+normal*.75,y-1.35,u]
-                    yaw=(0 if normal==1 else math.pi) if front=='z' else (math.pi/2 if normal==1 else -math.pi/2)
-                    NEIGHBORS.append({'position':pos,'yaw':yaw,'window':True})
-                    rect('Planter',ww*.38,y-2.7,.60,.75,.55,.65)
-                    rect('Foliage',ww*.38,y-2.3,.60,1,.5,.8)
-                if style==1 and floor==0:
-                    rect('Metal',0,y-2.75,1.0,ww+1.7,.18,2)
-                    rect('Metal',0,y-.8,1.9,ww+1.7,.10,.10)
-                    for du in [-ww*.6,0,ww*.6]:rect('Metal',du,y-1.8,1.9,.08,2,.08)
-                # Random lowered blinds and external air conditioners break the tiled rhythm.
-                if rng.random()<.28:rect('Trim',0,y+1.7,.19,ww-.17,1.8,.04)
-                if floor<4 and rng.random()<.16:
-                    rect('Aluminum',0,y-2.1,.62,ww*.74,1.15,1.20)
-                    for gy in [-.3,0,.3]:rect('WindowFrame',0,y-2.1+gy,1.24,ww*.65,.045,.035)
-    # Parapet coping, inset tar roof, service bulkheads and vents.
-    for z in [z0+.14,z1-.14]:box(facade,(cx,height+.7,z),(w,1.4,.40))
-    for x in [x0+.14,x1-.14]:box(facade,(x,height+.7,cz),(.40,1.4,d))
-    box('Roof',(cx-3,height+2.2,cz),(8,4.4,9))
-    for j in range(2):
-        box(facade,(cx+w*.28,height+2.0,cz+j*4-3),(2.0,4,2.2))
-        box('Cornice',(cx+w*.28,height+4.1,cz+j*4-3),(2.5,.3,2.7))
+    harlem_building(x0,x1,z0,z1,height,facade,style=style,facing=facing,hero=False,fire_escape=bool(fire_escape),residential=z0>90)
     if water_tower:
-        tx, tz = water_tower
-        for dx, dz in ((-2.6, -2.6), (2.6, -2.6), (-2.6, 2.6), (2.6, 2.6)):
-            beam("Metal", (tx + dx, height, tz + dz), (tx + dx * 0.8, height + 9, tz + dz * 0.8), 0.35)
-        box("Metal", (tx, height + 9.1, tz), (7.4, 0.3, 7.4))
-        cyl("Wood", (tx, height + 9.2, tz), 4.2, 9.5, segs=16)
-        for k in range(3):
-            cyl("Metal", (tx, height + 10.5 + k * 3, tz), 4.28, 0.25, segs=16)
-        cyl("Roof", (tx, height + 18.7, tz), 4.5, 3.4, segs=16, top_radius=0.3)
-    if fire_escape:
-        fx, fz, facing = fire_escape  # a point on the facade and which way it faces
-        floors = int((height - 14) // 10)
-        for k in range(floors):
-            y = 14 + k * 10
-            if facing in ("+z", "-z"):
-                sz = 1 if facing == "+z" else -1
-                box("Metal", (fx, y, fz + sz * 1.6), (12, 0.2, 3.2))
-                box("Metal", (fx, y + 3.2, fz + sz * 3.15), (12, 0.12, 0.12))
-                for i in range(7):
-                    box("Metal", (fx - 6 + i * 2, y + 1.6, fz + sz * 3.15), (0.08, 3.2, 0.08))
-                if k < floors - 1:
-                    for n in range(12):box('Metal',(fx-4.5+n*.67,y+n*.83,fz+sz*2.1),(1.15,.10,2.0))
-                    for dz in [1.15,3.05]:beam('Metal',(fx-4.5,y+2.5,fz+sz*dz),(fx+3.5,y+12.5,fz+sz*dz),.075)
-            else:
-                sx = 1 if facing == "+x" else -1
-                box("Metal", (fx + sx * 1.6, y, fz), (3.2, 0.2, 12))
-                box("Metal", (fx + sx * 3.15, y + 3.2, fz), (0.12, 0.12, 12))
-                for i in range(7):
-                    box("Metal", (fx + sx * 3.15, y + 1.6, fz - 6 + i * 2), (0.08, 3.2, 0.08))
-                if k < floors - 1:
-                    for n in range(12):box('Metal',(fx+sx*2.1,y+n*.83,fz-4.5+n*.67),(2.0,.10,1.15))
-                    for dx in [1.15,3.05]:beam('Metal',(fx+sx*dx,y+2.5,fz-4.5),(fx+sx*dx,y+12.5,fz+3.5),.075)
+        tx,tz=water_tower
+        for dx,dz in [(-2.6,-2.6),(2.6,-2.6),(-2.6,2.6),(2.6,2.6)]:
+            beam('PaintedIron',(tx+dx,height,tz+dz),(tx+dx*.8,height+8,tz+dz*.8),.24)
+        box('PaintedIron',(tx,height+8.1,tz),(7.4,.22,7.4))
+        cyl('Wood',(tx,height+8.2,tz),3.6,8.2,segs=18)
+        for yy in [height+9.4,height+12.3,height+15.2]:cyl('PaintedIron',(tx,yy,tz),3.66,.16,segs=18)
+        cyl('Roof',(tx,height+16.4,tz),3.85,2.6,segs=18,top_radius=.16)
+
+
+def distant_building(x0,x1,z0,z1,height,facade):
+    """Budgeted skyline tier: flat window faces at 150+ feet; no hidden frame boxes."""
+    cx,cz=(x0+x1)/2,(z0+z1)/2;w,d=x1-x0,z1-z0
+    box(facade,(cx,height/2,cz),(w,height,d))
+    box('RoofFlashing',(cx,height+.15,cz),(w+.4,.3,d+.4))
+    box('Roof',(cx-3,height+3,cz),(w*.35,6,d*.40))
+    for axis,span,fixed,sign in [('z',w,z1,1),('z',w,z0,-1),('x',d,x1,1),('x',d,x0,-1)]:
+        for floor in range(1,int(height/8.8)):
+            for bay in range(1,int(span/5.4)):
+                u=(-span/2)+bay*5.4;y=floor*8.8
+                ww=2.3;hh=4.2
+                if axis=='z':pts=[(cx+u-ww/2,y-hh/2,fixed+sign*.015),(cx+u+ww/2,y-hh/2,fixed+sign*.015),(cx+u+ww/2,y+hh/2,fixed+sign*.015),(cx+u-ww/2,y+hh/2,fixed+sign*.015)]
+                else:pts=[(fixed+sign*.015,y-hh/2,cz+u-ww/2),(fixed+sign*.015,y-hh/2,cz+u+ww/2),(fixed+sign*.015,y+hh/2,cz+u+ww/2),(fixed+sign*.015,y+hh/2,cz+u-ww/2)]
+                if (axis=='z' and sign<0) or (axis=='x' and sign>0):pts.reverse()
+                facade_quad('WindowGlass' if (bay+floor)%4 else 'WindowBlue',pts)
 
 
 def city():
+    global STATIC_GROUP
+    STATIC_GROUP = 'NorthArchitecture'
     # Dense contiguous Harlem-style street blocks, across narrow streets from the park.
     # This is an art-directed neighborhood, rather than a surveyed reconstruction.
     x=-166
@@ -466,59 +694,33 @@ def city():
         print('NORTH BLOCK',i,flush=True)
         h=[45,69,36,82,52,65,43,76,57,63,39][i]
         facade=['FacadeRed','FacadeCream','FacadeBrown','FacadeGray','FacadeTan','FacadePale'][i%6]
+        if i==5:
+            STATIC_GROUP='NorthArchitecture'
+            harlem_building(x,x+w-.3,-132,-91,h,'FacadeRed',style=0,hero=True)
+            STATIC_GROUP='NorthArchitecture'
+            x+=w
+            continue
         building(x,x+w-.3,-132,-91,h,facade,water_tower=(x+w*.6,-113) if i%3==0 else None,fire_escape=(x+w*.5,-90.8,'+z') if i%3!=1 else None)
-        # Recessed storefront glazing, shop doors, transoms and canvas awnings.
-        for xx in [x+w*.25,x+w*.75]:
-            box('WindowFrame',(xx,4.8,-90.8),(12.8,8.1,.30))
-            box('ShopGlass',(xx,4.9,-90.58),(11.8,7.3,.10))
-            for dx in [-5.9,-2,2,5.9]:box('WindowFrame',(xx+dx,4.9,-90.48),(.12,7.5,.12))
-            box('Cornice',(xx,9.15,-90.3),(13.4,.35,.70))
-            box('AwningGreen' if i%2 else 'AwningRed',(xx,9.9,-89.4),(12.7,.40,3.2))
-            box('Cornice',(xx,11.1,-90.4),(13.2,1.4,.16))
         x+=w
     # South street closes the world with lower brownstones, stoops and varied roofs.
+    STATIC_GROUP='SouthArchitecture'
     x=-109
     for i,w in enumerate([22,29,19,34,24,26,21,31]):
         h=[29,43,26,52,35,31,46,38][i]
         building(x,x+w-.45,98,133,h,["FacadeBrown","FacadeCream","FacadeRed","FacadePale"][i%4],fire_escape=(x+w*.6,97.8,"-z") if i%3==0 else None)
-        for n in range(6):box("Stair",(x+w*.5,.22+n*.32,96.2+n*.30),(5,.44+n*.64,3.2-n*.3))
-        box("WindowFrame",(x+w*.5,5.5,97.82),(4,7,.28))
-        box("Wood",(x+w*.5,5.5,97.63),(3.5,6.5,.16))
-        box('Cornice',(x+w*.5,9.2,97.6),(5.2,.65,.8))
-        box('Chrome',(x+w*.5+1.15,5.2,97.48),(.10,.52,.10))
-        for xx in [x+w*.19,x+w*.81]:
-            box('WindowFrame',(xx,6.4,97.8),(4.5,5.8,.25))
-            box('WindowGlass',(xx,6.4,97.62),(4,5.2,.10))
-            box('Cornice',(xx,9.5,97.5),(5.1,.5,.75))
-            box('Cornice',(xx,3.5,97.45),(5.0,.38,.9))
-            for dx in [-1.9,0,1.9]:box('WindowFrame',(xx+dx,6.4,97.52),(.10,5.2,.10))
-            box('WindowFrame',(xx,6.5,97.51),(4,.12,.10))
-            if i%2:box('Planter',(xx,3.8,97.1),(3.9,.55,.85))
-        for side in [-1,1]:
-            for n in range(5):box('Metal',(x+w*.5+side*2.5,1.6+n*.26,94.7+n*.52),(.08,2.6,.08))
-            beam('Metal',(x+w*.5+side*2.5,2.9,94.7),(x+w*.5+side*2.5,4.0,97.0),.10)
-        for zz in [94.7,96.5]:beam("Metal",(x+w*.5-2.7,2.4,zz),(x+w*.5+2.7,2.4,zz),.10)
-        if i%2==0:
-            bm=sbm('Roof')
-            coords=[(x-.5,h+.5,97.5),(x+w+.5,h+.5,97.5),(x+w*.5,h+7,97.5),(x-.5,h+.5,133.5),(x+w+.5,h+.5,133.5),(x+w*.5,h+7,133.5)]
-            verts=[bm.verts.new(B(*v)) for v in coords]
-            for ids in [(0,1,2),(5,4,3),(0,2,5,3),(2,1,4,5),(3,4,1,0)]:bm.faces.new([verts[i] for i in ids])
-            _finish(bm,verts)
-            box('Cornice',(x+w*.5,h+1,97.3),(2,2,.3))
         x+=w
     box("Sidewalk",(0,.1,94),(230,.2,8))
     for i in range(7):car(-89+i*29,78,["CarBody","CarRed","CarSilver"][i%3],i%3,True)
     for side in [-1,1]:
+        STATIC_GROUP='NorthArchitecture' if side<0 else 'SouthArchitecture'
         for i in range(6):
             z=-89+i*29.8;h=[38,72,48,83,32,59][i];fx=side*105
             building(-141,-105,z,z+29.5,h,'FacadeTan' if i%2 else 'FacadeRed',fire_escape=(fx,z+14,'+x' if side<0 else '-x')) if side<0 else building(105,141,z,z+29.5,h,'FacadeGray' if i%2 else 'FacadeRed',fire_escape=(fx,z+14,'-x'))
-            for zz in [z+7.5,z+21.5]:
-                box('ShopGlass',(fx-side*.12,4.7,zz),(.12,7.2,10.8))
-                for dz in [-5.4,0,5.4]:box('WindowFrame',(fx-side*.24,4.7,zz+dz),(.18,7.3,.14))
-                box('AwningGreen',(fx-side*1.15,9.0,zz),(2.8,.40,11.6))
     for x,z,w,d,h in [(-145,-181,43,40,135),(-52,-189,44,46,146),(67,-187,46,43,156),(161,-175,39,42,129)]:
-        building(x-w/2,x+w/2,z-d/2,z+d/2,h,'FacadeRed',cornice=False)
+        STATIC_GROUP='DistantCity'
+        distant_building(x-w/2,x+w/2,z-d/2,z+d/2,h,'FacadeRed')
     # Freestanding score clock above the north stand, not a billboard on a building.
+    STATIC_GROUP='Park'
     sc=L["screen"];ns=L["namingSign"]
     for x in [-5.6,5.6]:
         box("Metal",(x,sc["y"]/2,sc["z"]),(0.5,sc["y"],.5))
@@ -533,65 +735,209 @@ def city():
     for x in [-73,73]:
         for j,z in enumerate([-52,-25,3,31,86]):car(x,z,['CarBody','CarSilver','CarRed'][j%3],j%3)
     for j in range(7):car(-90+j*28,-76,['CarSilver','CarBody','CarRed'][j%3],j%3,True)
+    hero_streetscape()
+
+
+def hero_streetscape():
+    """Select details at the representative frontage, budgeted for a close inspection."""
+    global STATIC_GROUP
+    STATIC_GROUP='HeroNorthStreet'
+    # Four-foot sidewalk pours with hairline saw-cut joints, curb seams and one storm inlet.
+    for x in range(-22,18,4):box('PavingJoint',(x,.206,-87),(.034,.006,8))
+    for z in [-89,-85]:box('PavingJoint',(-3,.206,z),(40,.006,.032))
+    for x in range(-22,18,5):
+        box('Curb',(x+2.45,.21,-83),(4.88,.42,.55))
+    box('PaintedIron',(10,.035,-82.47),(3.1,.04,1.15))
+    for x in range(9,12):
+        box('Aluminum',(x,.058,-82.47),(.075,.025,1.04))
+    # Tall parking regulation sign and a compact hydrant offset from the entrance.
+    cyl('Aluminum',(14,.2,-84),.052,8.8,segs=6)
+    box('Trim',(14,7.55,-83.96),(1.25,2.25,.055))
+    for yy in [8.25,7.95,7.10]:box('AwningRed',(14,yy,-83.915),(.98,.06,.025))
+    cyl('PaintedIron',(-18,.2,-83.9),.40,2.13,segs=12)
+    cyl('PaintedIron',(-18,2.33,-83.9),.48,.20,segs=12)
+    cyl('PaintedIron',(-18,2.53,-83.9),.39,.42,segs=12,top_radius=.12)
+    box('PaintedIron',(-18,1.59,-83.9),(1.40,.50,.58))
+    # A steel shop bench: slender legs, separate wood slats, hardware placed at supports.
+    for xx in [-11.2,-6.8]:
+        for zz in [-89.4,-88.25]:cyl('PaintedIron',(xx,.2,zz),.055,1.35,segs=6)
+        box('PaintedIron',(xx,1.59,-88.82),(.14,.11,1.46))
+        box('PaintedIron',(xx,2.5,-89.4),(.11,2.7,.11))
+    for zz in [-89.28,-88.88,-88.48]:box('Wood',(-9,1.7,zz),(5.2,.13,.32))
+    for yy in [2.22,2.68,3.14]:box('Wood',(-9,yy,-89.43),(5.2,.32,.13))
+    # One tree pit and bicycle rack; leave a continuous accessible sidewalk route.
+    box('InteriorShadow',(17,.208,-85.4),(4.3,.02,4.3))
+    for xx in [15,19]:box('Curb',(xx,.27,-85.4),(.14,.13,4.2))
+    for zz in [-87.4,-83.4]:box('Curb',(17,.27,zz),(4.1,.13,.14))
+    for xx in [3.4,6.0]:
+        cyl('PaintedIron',(xx,.2,-85),.075,2.5,segs=6)
+    beam('PaintedIron',(3.4,2.70,-85),(6.0,2.70,-85),.12)
+    STATIC_GROUP='Park'
 
 
 def car(x,z,color,variant=0,turn=False):
-    # Lofted body, sloped glazed cabin and modeled wheel hardware; no stacked-box silhouette.
-    def pt(a,y,b):return (x+b,y,z-a) if turn else (x+a,y,z+b)
-    def quad(material,points):
-        bm=sbm(material);vs=[bm.verts.new(B(*pt(*p))) for p in points];f=bm.faces.new(vs);world_uv(bm,[f])
+    """Original adult-scale sedan/wagon/hatch family with genuinely open glazed cabins.
+
+    The former roof loft continued through the rear glass and hid it behind paint.
+    This mesh uses a shaped lower shell, independent roof, and explicit window openings.
+    About 3k triangles/vehicle, with smooth body/tire normals and no subdivision modifier.
+    """
+    variant%=3
+    length_scale=[1.0,1.055,.91][variant]
+    width_scale=[1.0,1.045,.975][variant]
+    roof=[4.72,5.20,4.93][variant]
+    rear_roof=[2.10,4.20,3.50][variant]
+    rear_base=[4.55,5.85,5.60][variant]
+    front_axle=-4.70;rear_axle=4.50
+    def pt(a,y,b):
+        a*=width_scale;b*=length_scale
+        return (x+b,y,z-a) if turn else (x+a,y,z+b)
     def part(material,c,size):
-        if turn:box(material,pt(*c),(size[2],size[1],size[0]))
-        else:box(material,pt(*c),size)
-    def loft(material,sections):
-        bm=sbm(material);rings=[]
-        for zz,w,low,high in sections:
-            ring=[(-w*.83,low),(-w,low+.25),(-w,high-.19),(-w*.84,high),(w*.84,high),(w,high-.19),(w,low+.25),(w*.83,low)]
-            rings.append([bm.verts.new(B(*pt(a,y,zz))) for a,y in ring])
-        for i in range(len(rings)-1):
-            for j in range(8):
-                f=bm.faces.new([rings[i][j],rings[i+1][j],rings[i+1][(j+1)%8],rings[i][(j+1)%8]]);f.smooth=True;world_uv(bm,[f])
-        for ring in [rings[0][::-1],rings[-1]]:world_uv(bm,[bm.faces.new(ring)])
-    lift=.25 if variant==1 else 0
-    loft(color,[(-7.4,2.35,.80,1.9),(-6.7,2.82,.65,2.17),(-3.4,2.9,.70,2.40),(3.8,2.88,.70,2.43),(6.7,2.65,.78,2.25),(7.3,2.35,.89,2.00)])
-    roof=4.20+lift
-    loft(color,[(-3.8,2.44,2.10,2.45),(-1.9,2.14,2.22,roof),(2.25,2.14,2.22,roof),(4.6,2.45,2.12,2.47)])
-    # Window polygons sit on the sloped cabin; painted pillars divide the side glass.
-    quad('CarGlass',[(-2.15,2.48,-3.61),(2.15,2.48,-3.61),(1.92,roof-.13,-1.86),(-1.92,roof-.13,-1.86)])
-    quad('CarGlass',[(2.15,2.52,4.37),(-2.15,2.52,4.37),(-1.92,roof-.13,2.22),(1.92,roof-.13,2.22)])
+        sx,sy,sz=size;sx*=width_scale;sz*=length_scale
+        box(material,pt(*c),(sz,sy,sx) if turn else (sx,sy,sz))
+    def line(material,a,b,width):wire(material,pt(*a),pt(*b),width/2,segs=4)
+    def poly(material,points,smooth=False):
+        bm=sbm(material);vs=[bm.verts.new(B(*pt(*p))) for p in points]
+        f=bm.faces.new(vs);f.smooth=smooth;world_uv(bm,[f]);return vs
+    def loft(material,rings):
+        bm=sbm(material);rr=[]
+        for pts in rings:rr.append([bm.verts.new(B(*pt(*p))) for p in pts])
+        for k in range(len(rr)-1):
+            for j in range(len(rr[k])):
+                f=bm.faces.new([rr[k][j],rr[k+1][j],rr[k+1][(j+1)%len(rr[k])],rr[k][(j+1)%len(rr[k])]])
+                f.smooth=True;world_uv(bm,[f])
+        for ring in [rr[0],rr[-1][::-1]]:world_uv(bm,[bm.faces.new(ring)])
+    # Raised lower side edge traces wheel arches rather than covering wheels with a slab.
+    sections=[(-7.70,2.34,1.90),(-7.40,2.65,2.08),(-6.95,2.85,2.27),(-5.9,2.94,2.46),(-5.45,2.97,2.54),(-4.7,2.98,2.62),(-3.95,2.98,2.66),(-3.5,2.97,2.69),(-2.4,2.95,2.71),(0,2.96,2.72),(3.3,2.98,2.74),(3.75,3.0,2.73),(4.50,3.0,2.69),(5.25,2.98,2.64),(5.7,2.92,2.59),(6.7,2.80,2.51),(7.25,2.61,2.39),(7.65,2.30,2.25)]
+    rings=[]
+    for zz,w,deck in sections:
+        wheel_d=min(abs(zz-front_axle),abs(zz-rear_axle))
+        arch=1.07+math.sqrt(max(0,1.19**2-wheel_d**2)) if wheel_d<1.19 else .74
+        belt=max(arch+.10,deck-.16)
+        ring=[(-w*.76,.62),(-w*.93,.70),(-w,arch),(-w,belt),(-w*.965,deck),(-w*.80,deck+.095),(-w*.45,deck+.155),(0,deck+.18),(w*.45,deck+.155),(w*.80,deck+.095),(w*.965,deck),(w,belt),(w,arch),(w*.93,.70),(w*.76,.62)]
+        rings.append([(xx,yy,zz) for xx,yy in ring])
+    loft(color,rings)
+    part('WindowFrame',(0,.72,0),(4.9,.25,12.8))
+    # Independent rolled roof; no opaque cabin shell behind the windshield/backlight.
+    bm=sbm(color);grid=[]
+    for j in range(7):
+        t=j/6;zz=-1.52+(rear_roof+1.52)*t
+        row=[]
+        for i in range(9):
+            u=-1+2*i/8;xx=u*(2.19-.025*math.sin(t*math.pi));yy=roof-.145*u*u+.045*math.sin(t*math.pi)
+            row.append(bm.verts.new(B(*pt(xx,yy,zz))))
+        grid.append(row)
+    for j in range(6):
+        for i in range(8):
+            f=bm.faces.new([grid[j][i],grid[j+1][i],grid[j+1][i+1],grid[j][i+1]])
+            f.smooth=True;world_uv(bm,[f])
+    # A curved glass patch between four corners, separated physically from the body shell.
+    def glass_patch(corners,bulge,back=False):
+        bm=sbm('CarGlass');rows=[]
+        for j in range(5):
+            v=j/4;row=[]
+            for i in range(7):
+                u=i/6
+                bottom=Vector(corners[0]).lerp(Vector(corners[1]),u)
+                top=Vector(corners[3]).lerp(Vector(corners[2]),u)
+                q=bottom.lerp(top,v);q.z+=bulge*math.sin(u*math.pi)*math.sin(v*math.pi)
+                row.append(bm.verts.new(B(*pt(*q))))
+            rows.append(row)
+        for j in range(4):
+            for i in range(6):
+                vs=[rows[j][i],rows[j][i+1],rows[j+1][i+1],rows[j+1][i]]
+                if not back:vs.reverse()
+                f=bm.faces.new(vs);f.smooth=True;world_uv(bm,[f])
+    glass_patch([(-2.47,2.87,-3.64),(2.47,2.87,-3.64),(2.10,roof-.15,-1.51),(-2.10,roof-.15,-1.51)],-.095)
+    glass_patch([(2.42,2.91,rear_base),(-2.42,2.91,rear_base),(-2.08,roof-.16,rear_roof),(2.08,roof-.16,rear_roof)],.085,back=False)
+    # Dark actual cabin volume and seat tops visible when the view grazes side glass.
+    part('WindowFrame',(0,2.68,.7),(4.6,.22,6.2))
+    for zz in [-.8,2.35]:
+        for xx in [-1.12,1.12]:
+            part('WindowFrame',(xx,3.05,zz),(1.55,.70,.43))
+            part('WindowFrame',(xx,3.57,zz),(1.05,.45,.28))
     for side in [-1,1]:
-        xx=side*2.43;rr=side*2.14
-        for zs,ze,rt0,rt1 in [(-3.2,.12,-1.78,.12),(.36,3.96,.36,2.12)]:
-            quad('CarGlass',[(xx,2.52,zs),(xx,2.52,ze),(rr,roof-.14,rt1),(rr,roof-.14,rt0)])
-        for zz in [-.3,2.8]:
-            part('Chrome',(side*2.91,2.14,zz),(.055,.08,.56))
-            part('WindowFrame',(side*2.92,1.55,zz+.50),(.022,1.14,.025))
-        part(color,(side*3.02,2.82,-2.65),(.53,.27,.58))
-        part('WindowFrame',(side*2.81,.91,0),(.10,.23,6.0))
-        for zz in [-4.55,4.50]:
-            bm=sbm('Tire');ret=bmesh.ops.create_cone(bm,cap_ends=True,segments=24,radius1=1.06,radius2=1.06,depth=.58)
-            a=Vector(B(*pt(side*2.74,1.07,zz)));direction=Vector(B(*pt(side*3.4,1.07,zz)))-a
-            tr=Matrix.Translation(a)@direction.to_track_quat('Z','Y').to_matrix().to_4x4();bmesh.ops.transform(bm,matrix=tr,verts=ret['verts']);_finish(bm,ret['verts'],True)
-            bm=sbm('Chrome');ret=bmesh.ops.create_cone(bm,cap_ends=True,segments=16,radius1=.68,radius2=.68,depth=.035)
-            tr=Matrix.Translation(B(*pt(side*3.045,1.07,zz)))@direction.to_track_quat('Z','Y').to_matrix().to_4x4();bmesh.ops.transform(bm,matrix=tr,verts=ret['verts']);_finish(bm,ret['verts'],True)
+        # Painted A/C pillars and dark B pillar border independently curved glass surfaces.
+        a0=(side*2.61,2.79,-3.60);a1=(side*2.18,roof-.12,-1.52)
+        c0=(side*2.59,2.87,rear_base+.05);c1=(side*2.18,roof-.12,rear_roof)
+        line(color,a0,a1,.17);line(color,c0,c1,.24)
+        line(color,a1,c1,.14)
+        line('WindowFrame',(side*2.58,2.86,-3.53),(side*2.59,2.92,rear_base-.08),.085)
+        line('WindowFrame',(side*2.54,2.85,.32),(side*2.18,roof-.10,.32),.19)
+        # Separate door windows and quarterlight preserve credible pillar proportions.
+        sets=[[(side*2.57,2.87,-3.41),(side*2.56,2.89,.18),(side*2.18,roof-.20,.18),(side*2.19,roof-.21,-1.43)],[(side*2.57,2.89,.47),(side*2.56,2.93,rear_base-.31),(side*2.18,roof-.22,rear_roof-.12),(side*2.18,roof-.20,.47)]]
+        for points in sets:
+            poly('CarGlass',points[::-1] if side>0 else points)
+        if variant:
+            line('WindowFrame',(side*2.56,2.92,rear_base-1.24),(side*2.19,roof-.20,rear_roof-.68),.11)
+        # Rubber/weather seals, window chrome line, panel gaps and shoulder crease.
+        line('Chrome',(side*2.64,2.78,-3.65),(side*2.64,2.87,rear_base+.05),.030)
+        for zz in [-3.41,.24,3.42]:
+            line('WindowFrame',(side*2.985,2.67,zz),(side*2.991,1.27,zz-.10),.013)
+        line('WindowFrame',(side*2.987,1.10,-3.45),(side*2.987,1.10,3.35),.014)
+        line(color,(side*2.988,2.21,-6.7),(side*2.998,2.27,6.4),.022)
+        for zz in [-.42,2.79]:
+            part('WindowFrame',(side*3.001,2.42,zz),(.035,.15,.69))
+            part('Chrome',(side*3.027,2.45,zz),(.058,.067,.52))
+        # Small rounded mirror housing, short arm, and rearward facing mirror pane.
+        line('WindowFrame',(side*2.62,3.05,-2.92),(side*3.10,3.07,-2.87),.10)
+        blob(color,pt(side*3.15,3.12,-2.91),(.32,.19,.46) if turn else (.46,.19,.32),segs=(10,5))
+        poly('CarGlass',[(side*2.91,2.99,-2.62),(side*3.43,2.99,-2.65),(side*3.40,3.23,-2.65),(side*2.95,3.23,-2.62)][::side])
+        for zz in [front_axle,rear_axle]:
+            # Rounded shoulder/tread tyre cross-section, rather than a flat cylindrical coin.
+            bm=sbm('Tire');rr=[];segments=24 if abs(x)<18 and z<-70 else 20
+            for offset,rad in [(-.31,.79),(-.30,.95),(-.20,1.045),(.20,1.045),(.30,.95),(.31,.79)]:
+                rr.append([bm.verts.new(B(*pt(side*(2.82+offset),1.065+rad*math.sin(j*math.tau/segments),zz+rad*math.cos(j*math.tau/segments)))) for j in range(segments)])
+            for k in range(len(rr)-1):
+                for j in range(segments):
+                    vs=[rr[k][j],rr[k][(j+1)%segments],rr[k+1][(j+1)%segments],rr[k+1][j]]
+                    if side>0:vs.reverse()
+                    f=bm.faces.new(vs);f.smooth=True;world_uv(bm,[f])
+            # Wheel dish/rim and a darker brake rotor; five spokes model the open silhouette.
+            def disc(material,xx,r,depth,segs=16):
+                bm=sbm(material);ret=bmesh.ops.create_cone(bm,cap_ends=True,segments=segs,radius1=r,radius2=r,depth=depth)
+                p=Vector(B(*pt(side*xx,1.065,zz)));direction=Vector(B(*pt(side*(xx+1),1.065,zz)))-p
+                tr=Matrix.Translation(p)@direction.to_track_quat('Z','Y').to_matrix().to_4x4()
+                bmesh.ops.transform(bm,matrix=tr,verts=ret['verts']);_finish(bm,ret['verts'],True)
+            disc('WindowFrame',3.09,.785,.028,20)
+            disc('Aluminum',3.12,.27,.055,12)
+            # A true circular rim bead and two fine tread circumferential grooves.
+            for material,xx,rad,thick in [('Chrome',3.125,.745,.042)]:
+                for j in range(segments):
+                    a=j*math.tau/segments;b=(j+1)*math.tau/segments
+                    line(material,(side*xx,1.065+rad*math.sin(a),zz+rad*math.cos(a)),(side*xx,1.065+rad*math.sin(b),zz+rad*math.cos(b)),thick)
             for k in range(5):
-                a=k*math.tau/5;part('WindowFrame',(side*3.07,1.07+math.sin(a)*.41,zz+math.cos(a)*.41),(.045,.18,.17))
+                a=k*math.tau/5
+                line('Aluminum',(side*3.155,1.065+math.sin(a)*.20,zz+math.cos(a)*.20),(side*3.155,1.065+math.sin(a+.08)*.69,zz+math.cos(a+.08)*.69),.13)
+            # Body-colored arch lip follows the real cutout edge, with a dark inner liner.
+            for j in range(14):
+                a=j*math.pi/14;b=(j+1)*math.pi/14
+                pa=(side*3.004,1.07+1.20*math.sin(a),zz+1.20*math.cos(a))
+                pb=(side*3.004,1.07+1.20*math.sin(b),zz+1.20*math.cos(b))
+                line(color,pa,pb,.046)
+    # Broad but curved bumpers, recessed plate, wraparound lights and restrained grille.
+    for zz,sgn in [(-7.70,-1),(7.67,1)]:
+        part('WindowFrame',(0,1.25,zz),(4.30,.27,.085))
+        part(color,(0,1.78,zz),(4.18,.32,.12))
+        part('WindowFrame',(0,1.51,zz+sgn*.09),(1.58,.64,.025))
+        part('Trim',(0,1.51,zz+sgn*.12),(1.40,.51,.026))
+        for i in range(5):part('WindowFrame',((i-2)*.20,1.54,zz+sgn*.139),(.10,.12,.009))
     for side in [-1,1]:
-        part('Headlight',(side*1.86,1.87,-7.20),(1.0,.35,.19));part('TailLight',(side*1.9,1.88,7.15),(.95,.36,.15))
-    part('WindowFrame',(0,1.35,-7.32),(2.5,.48,.08));part('Chrome',(0,1.71,-7.35),(2.6,.07,.08))
-    part('Trim',(0,1.15,-7.4),(1.1,.42,.04));part('Trim',(0,1.38,7.34),(1.1,.42,.04))
-
-def building_escape(fx, fz, height):
-    floors = int((height - 14) // 10)
-    for k in range(floors):
-        y = 14 + k * 10
-        box("Metal", (fx, y, fz + 1.6), (12, 0.2, 3.2))
-        box("Metal", (fx, y + 3.2, fz + 3.15), (12, 0.12, 0.12))
-        for i in range(7):
-            box("Metal", (fx - 6 + i * 2, y + 1.6, fz + 3.15), (0.08, 3.2, 0.08))
-        if k < floors - 1:
-            beam("Metal", (fx - 4.5, y, fz + 2.4), (fx + 3.5, y + 10, fz + 2.4), 0.25)
-
+        poly('Headlight',[(side*1.34,1.90,-7.75),(side*2.18,1.90,-7.75),(side*2.18,2.12,-7.75),(side*1.36,2.13,-7.75)][::-side])
+        poly('TailLight',[(side*1.29,1.94,7.735),(side*2.18,1.96,7.735),(side*2.18,2.18,7.735),(side*1.31,2.19,7.735)][::side])
+        line('Headlight',(side*1.40,2.01,7.75),(side*1.80,2.02,7.75),.041)
+        line('Chrome',(side*1.37,2.14,-7.77),(side*2.18,2.14,-7.77),.025)
+    part('WindowFrame',(0,2.06,-7.72),(2.65,.47,.055))
+    for yy in [1.91,2.03,2.15,2.27]:line('Chrome',(-1.26,yy,-7.755),(1.26,yy,-7.755),.022)
+    # Hood/trunk shut lines lie just above the contoured body instead of thick black stripes.
+    for side in [-1,1]:
+        line('WindowFrame',(side*1.75,2.81,-3.55),(side*1.83,2.47,-6.75),.011)
+        line('WindowFrame',(side*1.95,2.90,rear_base+.1),(side*1.99,2.63,6.70),.011)
+    line('WindowFrame',(-2.08,2.56,7.02),(2.08,2.56,7.02),.012)
+    line('TailLight',(-.55,2.97,rear_base-.03),(.55,2.97,rear_base-.03),.055)
+    for a in [-.8,.7]:line('WindowFrame',(a,2.91,-3.63),(a+.95,3.03,-3.48),.039)
+    if variant==1:
+        for side in [-1,1]:line('WindowFrame',(side*1.65,roof+.10,-1.2),(side*1.65,roof+.10,rear_roof-.15),.075)
 
 def lights_and_trees():
     for lx,lz in L["lights"]:
@@ -609,14 +955,14 @@ def lights_and_trees():
         bmesh.ops.transform(bm,matrix=matrix,verts=ret["verts"]);_finish(bm,ret["verts"],True)
     def leaves(center,radius):
         # Small low-poly leaf sprays break the crown silhouette and leave believable sky gaps.
-        for _ in range(165):
+        for _ in range(120):
             az=rng.random()*math.tau;u=rng.uniform(-1,1);rr=radius*(rng.random()**.33)
             q=math.sqrt(1-u*u);c=B(center[0]+math.cos(az)*q*rr,center[1]+u*rr*.90,center[2]+math.sin(az)*q*rr)
             bm=sbm(rng.choices(["Foliage","FoliageLight","LeafOchre"],[.58,.35,.07])[0])
             normal=Vector((rng.uniform(-1,1),rng.uniform(-1,1),rng.uniform(.15,1))).normalized()
             tx=normal.cross(Vector((0,0,1))).normalized();ty=normal.cross(tx)
-            size=rng.uniform(.28,.75)
-            coords=[(-1,0),(-.45,.60),(.22,.7),(.9,.2),(1.1,0),(.1,-.55),(-.5,-.4)]
+            size=rng.uniform(.15,.40)
+            coords=[(-1,0),(-.28,.60),(.75,.27),(1.1,0),(.12,-.55)]
             vv=[bm.verts.new(c+tx*xx*size+ty*yy*size) for xx,yy in coords]
             f=bm.faces.new(vv);f.smooth=False
     spots=[(-49,-57,41),(-23,-57,43),(27,-59,46),(50,-58,43),(-63,-35,40),(63,-30,43),(64,31,39),(-63,32,44),(-62,60,39),(66,64,40)]
@@ -652,13 +998,18 @@ def lights_and_trees():
             for dx in [-4,4]:box("Metal",(x+dx,.8,z),(.18,1.6,1.2))
 
 def finish_static():
-    for name, bm in STATIC.items():
-        me = bpy.data.meshes.new(f"Static_{name}")
+    profile = {}
+    for (group, name), bm in STATIC.items():
+        objname = f"Static_{group}_{name}"
+        me = bpy.data.meshes.new(objname)
         bm.to_mesh(me)
         bm.free()
         me.materials.append(mat(name))
-        obj = bpy.data.objects.new(f"Static_{name}", me)
+        obj = bpy.data.objects.new(objname, me)
         bpy.context.scene.collection.objects.link(obj)
+        tris = sum(len(p.vertices)-2 for p in me.polygons)
+        profile[group] = profile.get(group, 0) + tris
+    print("GEOMETRY_BY_GROUP", json.dumps(profile), flush=True)
 
 
 def preview(path):

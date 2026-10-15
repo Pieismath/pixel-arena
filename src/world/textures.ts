@@ -220,8 +220,8 @@ export function chainLinkTexture() {
   const S = 128;
   const { canvas, ctx } = makeCanvas(S, S);
   ctx.clearRect(0, 0, S, S);
-  ctx.strokeStyle = '#55625b';
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#69736f';
+  ctx.lineWidth = 1.65;
   const n = 4;
   const step = S / n;
   for (let i = -n; i <= n * 2; i++) {
@@ -232,7 +232,7 @@ export function chainLinkTexture() {
     ctx.lineTo(i * step + S, 0);
     ctx.stroke();
   }
-  return canvasTexture(canvas, [2, 2]);
+  return canvasTexture(canvas, [.9428, .9428]);
 }
 
 export function netTexture() {

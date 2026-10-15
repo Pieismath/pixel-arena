@@ -1,0 +1,195 @@
+[
+  {
+    "asset": "asphalt_floor",
+    "map": "Diffuse",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/asphalt_floor/asphalt_floor_diff_1k.jpg",
+    "sourceMD5": "e627d264c9ca56c458730c36d1a66a62",
+    "file": "asphalt_floor-Diffuse.webp",
+    "resolution": "1k",
+    "author": {
+      "eye-candy.xyz": "All"
+    },
+    "scaleMeters": [
+      2.3499999046325684,
+      2.3499999046325684
+    ],
+    "license": "CC0-1.0",
+    "assetPage": "https://polyhaven.com/a/asphalt_floor",
+    "bytes": 488132,
+    "sha256": "d306aab1c3969e5eb62cc8eb09d9a8f9a4a1af892d4a64accdaddd1328e09da0"
+  },
+  {
+    "asset": "asphalt_floor",
+    "map": "nor_gl",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/asphalt_floor/asphalt_floor_nor_gl_1k.jpg",
+    "sourceMD5": "10f976cf8c5f5138185f8ba9dc31cdd7",
+    "file": "asphalt_floor-nor_gl.webp",
+    "resolution": "1k",
+    "author": {
+      "eye-candy.xyz": "All"
+    },
+    "scaleMeters": [
+      2.3499999046325684,
+      2.3499999046325684
+    ],
+    "license": "CC0-1.0",
+    "assetPage": "https://polyhaven.com/a/asphalt_floor",
+    "bytes": 709928,
+    "sha256": "73459fed81b978341e767ffe332cfac41171c7af489b3b74b4f04b09b60c40cb"
+  },
+  {
+    "asset": "asphalt_floor",
+    "map": "arm",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/asphalt_floor/asphalt_floor_arm_1k.jpg",
+    "sourceMD5": "0c474e49c2e2bcced9f8c4d320a7a39f",
+    "file": "asphalt_floor-arm.webp",
+    "resolution": "1k",
+    "author": {
+      "eye-candy.xyz": "All"
+    },
+    "scaleMeters": [
+      2.3499999046325684,
+      2.3499999046325684
+    ],
+    "license": "CC0-1.0",
+    "assetPage": "https://polyhaven.com/a/asphalt_floor",
+    "bytes": 196278,
+    "sha256": "22a1c490d8b5a9bbf166e4e7dcc64846b23e3b099b7afdfecc546f06b103755a"
+  },
+  {
+    "asset": "red_brick",
+    "map": "Diffuse",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/red_brick/red_brick_diff_1k.jpg",
+    "sourceMD5": "269e69449755abd1ede473e634b670e7",
+    "file": "red_brick-Diffuse.webp",
+    "resolution": "1k",
+    "author": {
+      "Rob Tuytel": "All"
+    },
+    "scaleMeters": [
+      1.399999976158142,
+      1.399999976158142
+    ],
+    "license": "CC0-1.0",
+    "assetPage": "https://polyhaven.com/a/red_brick",
+    "bytes": 228770,
+    "sha256": "46bce929d3fae2f8cfa36f9b85f5fd10814d683f6f378656093859e9d277a234"
+  },
+  {
+    "asset": "red_brick",
+    "map": "nor_gl",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/red_brick/red_brick_nor_gl_1k.jpg",
+    "sourceMD5": "3a49f27fb909b2db794f60bf1ce6659f",
+    "file": "red_brick-nor_gl.webp",
+    "resolution": "1k",
+    "author": {
+      "Rob Tuytel": "All"
+    },
+    "scaleMeters": [
+      1.399999976158142,
+      1.399999976158142
+    ],
+    "license": "CC0-1.0",
+    "assetPage": "https://polyhaven.com/a/red_brick",
+    "bytes": 553980,
+    "sha256": "b711413db7f5b2b394f2490d5c38e2875c463fb077532ce5f89f7b4f4a38e986"
+  },
+  {
+    "asset": "red_brick",
+    "map": "arm",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/red_brick/red_brick_arm_1k.jpg",
+    "sourceMD5": "677d7938c3b7fdb1973af527ecce2077",
+    "file": "red_brick-arm.webp",
+    "resolution": "1k",
+    "author": {
+      "Rob Tuytel": "All"
+    },
+    "scaleMeters": [
+      1.399999976158142,
+      1.399999976158142
+    ],
+    "license": "CC0-1.0",
+    "assetPage": "https://polyhaven.com/a/red_brick",
+    "bytes": 145780,
+    "sha256": "104a62301cae8ce3af99df11da4adec326ad03925ace3c362cc3f5bd38a9db6e"
+  },
+  {
+    "asset": "concrete_wall_007",
+    "map": "Diffuse",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/concrete_wall_007/concrete_wall_007_diff_1k.jpg",
+    "sourceMD5": "f8a951200ebe1a42ba57ef331d94f8e2",
+    "file": "concrete_wall_007-Diffuse.webp",
+    "resolution": "1k",
+    "author": {
+      "Dario Barresi": "Processing",
+      "Rico Cilliers": "Tiling",
+      "Charlotte Baglioni": "Photography"
+    },
+    "scaleMeters": [
+      2.1599998474121094,
+      2.1599998474121094
+    ],
+    "license": "CC0-1.0",
+    "assetPage": "https://polyhaven.com/a/concrete_wall_007",
+    "bytes": 205282,
+    "sha256": "a556147d2a7ef387ccc746ce2387a818c831bc0466ecd076de6a6af7086de33f"
+  },
+  {
+    "asset": "concrete_wall_007",
+    "map": "nor_gl",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/concrete_wall_007/concrete_wall_007_nor_gl_1k.jpg",
+    "sourceMD5": "7d62088fb4f40833226cdb2a09476a58",
+    "file": "concrete_wall_007-nor_gl.webp",
+    "resolution": "1k",
+    "author": {
+      "Dario Barresi": "Processing",
+      "Rico Cilliers": "Tiling",
+      "Charlotte Baglioni": "Photography"
+    },
+    "scaleMeters": [
+      2.1599998474121094,
+      2.1599998474121094
+    ],
+    "license": "CC0-1.0",
+    "assetPage": "https://polyhaven.com/a/concrete_wall_007",
+    "bytes": 247520,
+    "sha256": "8badae124882aa87bc669836bf7b738c0e30f9244c9a7ed5a0292be533e36d31"
+  },
+  {
+    "asset": "concrete_wall_007",
+    "map": "arm",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/concrete_wall_007/concrete_wall_007_arm_1k.jpg",
+    "sourceMD5": "ca6aa7493f967746b2e74461d4bf14c3",
+    "file": "concrete_wall_007-arm.webp",
+    "resolution": "1k",
+    "author": {
+      "Dario Barresi": "Processing",
+      "Rico Cilliers": "Tiling",
+      "Charlotte Baglioni": "Photography"
+    },
+    "scaleMeters": [
+      2.1599998474121094,
+      2.1599998474121094
+    ],
+    "license": "CC0-1.0",
+    "assetPage": "https://polyhaven.com/a/concrete_wall_007",
+    "bytes": 123040,
+    "sha256": "6eb88395b6918704d5760085bc3cbdfcfcfe4894eae1d75bab54a131640b4ebf"
+  },
+  {
+    "asset": "wide_street_02",
+    "map": "hdri",
+    "source": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/wide_street_02_1k.hdr",
+    "sourceMD5": "2d37b07ac348e8dd57f9f97c23022f76",
+    "file": "wide_street_02-hdri.hdr",
+    "resolution": "1k",
+    "author": {
+      "Sergej Majboroda": "All"
+    },
+    "scaleMeters": [],
+    "license": "CC0-1.0",
+    "assetPage": "https://polyhaven.com/a/wide_street_02",
+    "bytes": 1519162,
+    "sha256": "2d496622629e51276846e1149afd9040fa889cb3a26bed4c7d4d6c31ebaed9ad"
+  }
+]

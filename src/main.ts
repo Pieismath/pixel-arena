@@ -10,6 +10,8 @@ import { createUI } from './ui/ui';
 import { createCrowd } from './world/crowd';
 import { BANNER_SLOTS, MURAL_SLOTS, NAMING_SLOT, SCREEN_SLOT, SEAT_INDEX, SEATS, seatKey, type PanelSlot } from './world/layout';
 import { createEnvironment, createPark } from './world/park';
+import { loadSurfaces } from './world/pbr';
+import { actionFraming, overviewFraming } from './render/camera-framing';
 import { GameSim } from './world/players';
 import { setMaxAnisotropy } from './world/textures';
 import { downloadSpotCard } from './ui/share';
@@ -72,6 +74,7 @@ async function main() {
   renderer.toneMappingExposure = 0.98;
   renderer.info.autoReset = false;
   renderer.shadowMap.enabled = true;
+  renderer.shadowMap.autoUpdate = false; // refresh once per displayed frame, not again for GTAO
   renderer.shadowMap.type = THREE.PCFShadowMap;
   setMaxAnisotropy(renderer.capabilities.getMaxAnisotropy());
 
@@ -81,22 +84,20 @@ async function main() {
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
   controls.minDistance = 14;
-  controls.maxDistance = 125;
+  controls.maxDistance = 380;
   controls.minPolarAngle = 0.15;
-  controls.maxPolarAngle = 1.36;
+  controls.maxPolarAngle = Math.PI * .75; // allow looking up from the sidewalk
   controls.autoRotate = false;
   controls.autoRotateSpeed = 0.25;
 
-  const { sun } = createEnvironment(scene, renderer);
+  const { sun, ready: environmentReady } = createEnvironment(scene, renderer);
   if (quality === 'low') sun.shadow.mapSize.set(1024, 1024);
   sun.shadow.radius = 3;
   const post = createPostFX(renderer, scene, camera, quality);
 
   const isPortrait = () => window.innerWidth / window.innerHeight < 0.85;
-  const homeView = () =>
-    isPortrait()
-      ? { camera: new THREE.Vector3(66, 70, 84), target: new THREE.Vector3(0, 2, -4) }
-      : { camera: new THREE.Vector3(40, 52, 70), target: new THREE.Vector3(0, 3, -4) };
+  const homeView = () => isPortrait() ? overviewFraming(camera.aspect, camera.fov)
+    : { camera: new THREE.Vector3(40, 52, 70), target: new THREE.Vector3(0, 3, -4) };
   function fitCamera() {
     camera.fov = isPortrait() ? 60 : 45;
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -115,13 +116,15 @@ async function main() {
   const loader = new GLTFLoader(manager);
   loader.setMeshoptDecoder(MeshoptDecoder);
   const base = import.meta.env.BASE_URL;
-  const [parkGltf, ballerGltf, fansGltf] = await Promise.all([
+  const [parkGltf, ballerGltf, fansGltf, surfaces] = await Promise.all([
     loader.loadAsync(`${base}models/park.glb`),
     loader.loadAsync(`${base}models/baller.glb`),
     loader.loadAsync(`${base}models/fans.glb`),
+    loadSurfaces(renderer),
+    environmentReady,
   ]);
 
-  const park = createPark(parkGltf);
+  const park = createPark(parkGltf, surfaces);
   scene.add(park.root);
   const crowd = createCrowd(fansGltf);
   scene.add(crowd.group);
@@ -262,17 +265,9 @@ async function main() {
   }
 
   function actionView() {
-    const subject = game.cinematicTarget;
-    const dir = game.attackingDirection;
-    const dunk = game.cinematicMode === 'dunk';
-    const distance = isPortrait() ? 1.4 : 1;
-    wantTarget.copy(subject);
-    wantTarget.y = dunk ? 8 : Math.max(4, subject.y);
-    wantPos.set(
-      THREE.MathUtils.clamp(subject.x + dir * (dunk ? -8 : game.cinematicMode === 'drive' ? -5 : 11) * distance, -54, 54),
-      dunk ? 11 : 12,
-      subject.z + (dunk ? 23 : 22) * distance,
-    );
+    const shot = actionFraming(game.cinematicTarget, game.ballPosition, game.attackingDirection,
+      game.cinematicMode === 'dunk', camera.aspect, camera.fov);
+    wantTarget.copy(shot.target); wantPos.copy(shot.camera);
   }
 
   function updateTrailer(dt: number) {
@@ -290,7 +285,6 @@ async function main() {
     }
     const speed = game.cinematicMode === 'dunk' ? 3 : 1.4;
     camera.position.lerp(wantPos, 1 - Math.exp(-dt * speed));
-    keepInsideStreets(camera.position);
     trailerTarget.lerp(wantTarget, 1 - Math.exp(-dt * 2.5));
     camera.lookAt(trailerTarget);
     if (trailerT > nextWave) {
@@ -415,7 +409,25 @@ async function main() {
     sun.shadow.map?.dispose();
     sun.shadow.map = null;
   }
-  const diagnostics = createDiagnostics(game, renderer, () => post.quality, lowerGraphics, disableShadows);
+  let qaPaused = false;
+  function inspectSection(section: string) {
+    if (trailer) toggleTrailer();
+    ui.hidePanels(); clearFocus(); followAction = false; fly = null;
+    const subject = game.cinematicTarget.clone(); subject.y = 3.4;
+    const views: Record<string, {camera: THREE.Vector3; target: THREE.Vector3}> = {
+      Neighborhood: {camera: new THREE.Vector3(120, 125, 155), target: new THREE.Vector3(0, 12, -4)},
+      Facade: {camera: new THREE.Vector3(-16, 22, -58), target: new THREE.Vector3(-3, 24, -91)},
+      Street: {camera: new THREE.Vector3(12, 6, -67), target: new THREE.Vector3(-5, 7, -91)},
+      Surface: {camera: new THREE.Vector3(25, 6, 16), target: new THREE.Vector3(32, .2, 0)},
+      Cage: {camera: new THREE.Vector3(47, 7, 9), target: new THREE.Vector3(58, 8, -2)},
+      Hoop: {camera: new THREE.Vector3(29, 12, 10), target: new THREE.Vector3(43, 10, 0)},
+      Player: {camera: subject.clone().add(new THREE.Vector3(4.6, 1.2, 11).applyAxisAngle(new THREE.Vector3(0, 1, 0), game.cinematicHeading)), target: subject},
+    };
+    const shot = views[section]; if (!shot) return;
+    camera.position.copy(shot.camera); controls.target.copy(shot.target); controls.update();
+  }
+  const diagnostics = createDiagnostics(game, renderer, () => post.quality, lowerGraphics, disableShadows,
+    scene, inspectSection, () => { qaPaused = !qaPaused; return qaPaused; });
 
   game.onScore = (team, points) => {
     park.flashScore(team, points);
@@ -532,7 +544,7 @@ async function main() {
     showFallback('The graphics connection paused. Reload to return to the court.');
   });
   canvas.addEventListener('webglcontextrestored', () => location.reload());
-  const startView = params.get('view') ?? (isPortrait() ? 'courtside' : 'overview');
+  const startView = params.get('view') ?? 'courtside';
   if (startView === 'courtside' || startView === 'crowd') setView(startView);
   if (params.get('highlight') === '1') playHighlight();
   if (params.get('trailer') === '1') toggleTrailer();
@@ -542,7 +554,7 @@ async function main() {
     const dt = Math.min(rawDt, 0.05);
     last = now;
     const catchup = Math.min(Math.max(rawDt,0),.2);
-    const simDt = stillAt > 0 ? Math.max(0, Math.min(catchup, stillAt - elapsed)) : catchup;
+    const simDt = qaPaused ? 0 : stillAt > 0 ? Math.max(0, Math.min(catchup, stillAt - elapsed)) : catchup;
     elapsed += simDt;
 
     // Keep ball physics and animation contacts stable during slow presentation frames.
@@ -564,14 +576,14 @@ async function main() {
         if (fly.t >= 1) fly = null;
       } else if (followAction && !selected && !reducedMotion) {
         actionView();
-        camera.position.lerp(wantPos, 1 - Math.exp(-dt * 2));
-        controls.target.lerp(wantTarget, 1 - Math.exp(-dt * 3));
+        camera.position.lerp(wantPos, 1 - Math.exp(-dt * 4));
+        controls.target.lerp(wantTarget, 1 - Math.exp(-dt * 6));
       }
       controls.update(dt);
-      keepInsideStreets(camera.position);
-      controls.target.x = THREE.MathUtils.clamp(controls.target.x, -70, 70);
-      controls.target.y = THREE.MathUtils.clamp(controls.target.y, 0, 60);
-      controls.target.z = THREE.MathUtils.clamp(controls.target.z, -76, 60);
+      if (!followAction && !fly) keepInsideStreets(camera.position);
+      controls.target.x = THREE.MathUtils.clamp(controls.target.x, -105, 105);
+      controls.target.y = THREE.MathUtils.clamp(controls.target.y, 0, 110);
+      controls.target.z = THREE.MathUtils.clamp(controls.target.z, -115, 115);
       hover(now);
     }
 
@@ -588,11 +600,13 @@ async function main() {
         sampleFrames = 0;
       }
     }
+    crowd.updateLod(camera);
+    if (park.updateLod(camera)) renderer.shadowMap.needsUpdate = true;
     renderer.info.reset();
     post.render();
     recording.frame();
     gameplay.update();
-    diagnostics.frame(rawDt, elapsed);
+    diagnostics.frame(rawDt, elapsed, qaPaused);
     metricsTime += rawDt;
     metricsFrames++;
     if (metricsTime >= 2) {

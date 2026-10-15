@@ -1,0 +1,21 @@
+{
+  "method": "120s runtime trajectory; 60Hz camera integration, sampled rays5Hz against opaque architectural meshes in actual park.glb; no GPU or phone FPS claim",
+  "views": [
+    {
+      "name": "desktop",
+      "aspect": 1.7777777777777777,
+      "fov": 45,
+      "checks": 590,
+      "blocked": 0,
+      "examples": []
+    },
+    {
+      "name": "portrait",
+      "aspect": 0.46208530805687204,
+      "fov": 60,
+      "checks": 590,
+      "blocked": 0,
+      "examples": []
+    }
+  ]
+}

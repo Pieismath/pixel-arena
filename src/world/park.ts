@@ -4,39 +4,40 @@ import type { ArenaState, Brand, SpotRef } from '../data/types';
 import { BANNER_SLOTS, MURAL_SLOTS, NAMING_SLOT } from './layout';
 import { CourtPainter, drawBanner, drawMural, drawNamingSign, Painted, ScreenPainter, type Scoreboard } from './signs';
 import * as T from './textures';
+import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
+import { courtSurface, type SurfaceLibrary } from './pbr';
+import { FLOOR } from '../config';
 
 type Mat = THREE.MeshStandardMaterial;
 const std = (p: THREE.MeshStandardMaterialParameters): Mat => new THREE.MeshStandardMaterial({ roughness: 0.85, ...p });
 /** Emissive "lamp" colors above 1.0 so the bloom pass picks them up. */
 const glow = (hex: string, strength: number) => new THREE.MeshBasicMaterial({ color: new THREE.Color(hex).multiplyScalar(strength) });
 
-function parkMaterials(): Record<string, THREE.Material> {
-  const facade = (color: string, seed: number) => {
-    const map=T.masonryTexture(color,seed);
-    return std({map,bumpMap:map,bumpScale:.045,roughness:.94});
-  };
+function parkMaterials(surfaces: SurfaceLibrary): Record<string, THREE.Material> {
+  const facade = (color: string) => std({ ...surfaces.brick, color, normalScale: new THREE.Vector2(.7, .7), roughness: .96, aoMapIntensity: .55 });
+  const concrete = (color: string) => std({ ...surfaces.concrete, color, normalScale: new THREE.Vector2(.35, .35), roughness: .92, aoMapIntensity: .4 });
   const awning = (a: string, b: string) => {
     const t = T.stripeTexture(a, b, 3, true, 64);
     return std({ map: t, roughness: 0.8 });
   };
   return {
-    Asphalt: std({ map: T.asphaltTexture('#3c3d47', 1), roughness: 0.96 }),
-    ParkGround: std({ map: T.asphaltTexture('#414a45', 2, 30), roughness: 0.96 }),
-    Sidewalk: std({ map: T.concreteTexture('#ada596', 3), roughness: 0.9 }),
-    Curb: std({ color: '#8c877f' }),
+    Asphalt: std({ ...surfaces.asphalt, color: '#b6b8ba', roughness: .98, normalScale: new THREE.Vector2(.65,.65), aoMapIntensity:.45 }),
+    ParkGround: std({ ...surfaces.asphalt, color: '#a8b1a8', roughness: .98, normalScale: new THREE.Vector2(.5,.5), aoMapIntensity:.4 }),
+    Sidewalk: concrete('#d5cebd'),
+    Curb: concrete('#c3bda9'),
     WallPaint: std({ color: '#d9d1c5', roughness: 0.95 }),
     Aluminum: std({ map: T.brushedTexture('#727a75'), metalness: 0.65, roughness: 0.5 }),
     SeatMetal: std({ color: '#283330', roughness: 0.76, metalness: 0.28 }),
-    Stair: std({ map: T.concreteTexture('#c0a474', 5, 1, 8), roughness: 0.94 }),
+    Stair: concrete('#c8c1b2'),
     RoadPaint: std({ color: '#d8d0ad', roughness: 0.96 }),
     Metal: std({ color: '#34383d', metalness: 0.35, roughness: 0.55 }),
     Padding: std({ map: T.stripeTexture('#1e2a28', '#263532', 4, true, 3), roughness: 0.88 }),
-    FacadeRed: facade('#795044',11),
-    FacadeTan: facade('#998269',12),
-    FacadeGray: facade('#665e57',13),
-    FacadeCream: facade('#b9aa8d',14),
-    FacadeBrown: facade('#695047',15),
-    FacadePale: std({map:T.concreteTexture('#a7aaa1',16),roughness:.9}),
+    FacadeRed: facade('#b2a89b'),
+    FacadeTan: facade('#d0b68b'),
+    FacadeGray: facade('#8e9393'),
+    FacadeCream: facade('#ece0ba'),
+    FacadeBrown: facade('#817267'),
+    FacadePale: concrete('#d4d1c4'),
     WindowGlass: std({color:'#283e4a',roughness:.27,metalness:.40}),
     WindowBlue: std({color:'#4b6570',roughness:.24,metalness:.38}),
     WindowWarm: std({color:'#88785f',roughness:.48}),
@@ -56,7 +57,7 @@ function parkMaterials(): Record<string, THREE.Material> {
     AwningRed: awning('#c8402f', '#f3e9d8'),
     AwningGreen: awning('#2f8f5a', '#f3e9d8'),
     LampGlow: glow('#fff1cc', 1.15),
-    ChainLink: std({ map: T.chainLinkTexture(), alphaTest: 0.45, side: THREE.DoubleSide, metalness: 0.4, roughness: 0.5 }),
+    ChainLink: std({ map: T.chainLinkTexture(), alphaTest: 0.35, alphaToCoverage: true, side: THREE.DoubleSide, metalness: 0.4, roughness: 0.5 }),
     Net: std({ color: '#e5e0cd', roughness: 0.97 }),
     Rim: std({ color: '#e8531f', metalness: 0.3, roughness: 0.45 }),
     Backboard: std({ color: '#b6d4d5', roughness: 0.11, metalness: 0.05, transparent: true, opacity: 0.18, depthWrite: false }),
@@ -64,7 +65,19 @@ function parkMaterials(): Record<string, THREE.Material> {
     ScreenFrame: std({ color: '#15171e', roughness: 0.6 }),
     ShopGlass: std({ map: T.shopGlassTexture(), roughness: 0.24, metalness: 0.32 }),
     Trim: std({ color: '#f2e8d8' }),
-    Planter: std({ color: '#6b5a4a' }),
+    Planter: concrete('#8e7562'),
+    InteriorShadow: std({ color: '#161715', roughness: 1, envMapIntensity: .2 }),
+    InteriorPlaster: concrete('#9d917c'),
+    CurtainLinen: std({ color: '#c6bda6', roughness: 1, side: THREE.DoubleSide }),
+    CurtainWarm: std({ color: '#81765f', roughness: 1, side: THREE.DoubleSide }),
+    ShopInterior: std({ color: '#4e4940', roughness: .98, envMapIntensity: .3 }),
+    ShopShelf: std({ color: '#796650', roughness: .86 }),
+    DoorWood: std({ color: '#494033', roughness: .75 }),
+    GlassPane: std({ color: '#a2b3b7', transparent: true, opacity: .16, depthWrite: false, roughness: .14, metalness: 0, envMapIntensity: .8 }),
+    PaintedIron: std({ color: '#272c28', roughness: .62, metalness: .35 }),
+    Limestone: concrete('#e2d3b9'),
+    RoofFlashing: std({ color: '#929b97', roughness: .65, metalness: .72 }),
+    PavingJoint: std({ color: '#54534a', roughness: 1 }),
   };
 }
 
@@ -78,10 +91,10 @@ interface Hooks {
   banners: THREE.Mesh[];
 }
 
-export function createPark(gltf: GLTF) {
+export function createPark(gltf: GLTF, surfaces: SurfaceLibrary) {
   const root = gltf.scene;
   root.name = 'park';
-  const materials = parkMaterials();
+  const materials = parkMaterials(surfaces);
   const hooks: Hooks = { court: null, screen: null, naming: null, graffiti: null, murals: [], banners: [] };
   const pickables: THREE.Object3D[] = [];
 
@@ -92,8 +105,10 @@ export function createPark(gltf: GLTF) {
     const replacement = materials[name];
     if (replacement) mesh.material = replacement;
     mesh.receiveShadow = name !== 'LampGlow';
-    mesh.castShadow = !['Asphalt', 'ParkGround', 'Sidewalk', 'LampGlow', 'CourtSurface', 'Backboard'].includes(name);
-    if (name === 'ChainLink' || name === 'Net' || name === 'Backboard') mesh.userData.skipAO = true;
+    // Subpixel alpha wire shadows alias into dark stripes on athletes. Posts and nearby
+    // rails cast; both subpixel wire representations only supply the visible fence.
+    mesh.castShadow = !['Asphalt', 'ParkGround', 'Sidewalk', 'LampGlow', 'CourtSurface', 'Backboard', 'GlassPane', 'ChainLink'].includes(name) && !mesh.name.includes('HeroCageWire');
+    if (name === 'ChainLink' || name === 'Net' || name === 'Backboard' || name === 'GlassPane') mesh.userData.skipAO = true;
     let m: RegExpMatchArray | null;
     if (name === 'CourtSurface') hooks.court = mesh;
     else if (name === 'BigScreen') hooks.screen = mesh;
@@ -104,14 +119,12 @@ export function createPark(gltf: GLTF) {
   });
 
   // Court surface with the lines and the court's name.
-  const court = new CourtPainter();
-  const courtBump = T.surfaceBumpTexture('asphalt');
-  courtBump.repeat.set(18, 10);
+  const court = new CourtPainter(surfaces.asphalt.map.image as HTMLImageElement);
   const plasterBump = T.surfaceBumpTexture('plaster');
   plasterBump.repeat.set(6, 2);
   const vinylBump = T.surfaceBumpTexture('vinyl');
   if (hooks.court) {
-    hooks.court.material = std({ map: court.texture, roughness: 0.93, bumpMap: courtBump, bumpScale: 0.012 });
+    hooks.court.material = std({ map: court.texture, ...courtSurface(surfaces, FLOOR.length, FLOOR.width) });
     hooks.court.castShadow = false;
     hooks.court.userData.pick = (hit: THREE.Intersection): SpotRef | null =>
       hit.point.x ** 2 + hit.point.z ** 2 < 8 * 8 ? { kind: 'naming' } : null;
@@ -156,10 +169,25 @@ export function createPark(gltf: GLTF) {
     return p;
   });
 
+  const cageCenter = new THREE.Vector3(58, 9.5, -2);
+  const cageWires: THREE.Object3D[] = [], cageProxies: THREE.Object3D[] = [];
+  root.traverse(o => {
+    if (o.name.includes('HeroCageWire')) cageWires.push(o);
+    if (o.name.includes('HeroCageProxy')) cageProxies.push(o);
+  });
+  let cageNear: boolean | null = null;
   const brandOf = (state: ArenaState, id: string | null): Brand | null => (id ? state.brands[id] ?? null : null);
 
   return {
     root,
+    updateLod(camera: THREE.Camera) {
+      const near = camera.position.distanceToSquared(cageCenter) < 72 * 72;
+      if (near === cageNear) return false;
+      cageNear = near;
+      cageWires.forEach(o => o.visible = near);
+      cageProxies.forEach(o => o.visible = !near);
+      return true;
+    },
     pickables,
     setState(state: ArenaState) {
       const naming = brandOf(state, state.naming.brandId);
@@ -183,7 +211,7 @@ export function createPark(gltf: GLTF) {
 
 export type Park = ReturnType<typeof createPark>;
 
-/** Evening sky dome, sun, sky fill, fog and a soft environment for reflections. */
+/** Afternoon sunlight and measured outdoor HDR reflections, with a neutral procedural sky. */
 export function createEnvironment(scene: THREE.Scene, renderer: THREE.WebGLRenderer) {
   const sunDir = new THREE.Vector3(-0.6, 0.58, 0.65).normalize();
   const sky = new THREE.Mesh(
@@ -193,9 +221,9 @@ export function createEnvironment(scene: THREE.Scene, renderer: THREE.WebGLRende
       depthWrite: false,
       fog: false,
       uniforms: {
-        top: { value: new THREE.Color('#7396b1') },
+        top: { value: new THREE.Color('#7199ba') },
         mid: { value: new THREE.Color('#bdd0d4') },
-        horizon: { value: new THREE.Color('#ead4ae') },
+        horizon: { value: new THREE.Color('#d8dfe0') },
         sunDir: { value: sunDir },
       },
       vertexShader: /* glsl */ `
@@ -223,10 +251,10 @@ export function createEnvironment(scene: THREE.Scene, renderer: THREE.WebGLRende
   sky.frustumCulled = false;
   scene.add(sky);
   scene.background = new THREE.Color('#bfd0d3');
-  scene.fog = new THREE.Fog('#c5cec7', 180, 600);
+  scene.fog = new THREE.Fog('#c8d3da', 280, 1050);
 
-  scene.add(new THREE.HemisphereLight('#c2d6e3', '#89775a', 1.1));
-  const sun = new THREE.DirectionalLight('#ffe0ad', 2.7);
+  scene.add(new THREE.HemisphereLight('#c8d9e8', '#777666', .52));
+  const sun = new THREE.DirectionalLight('#fff1dc', 2.35);
   sun.position.copy(sunDir).multiplyScalar(320);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
@@ -237,20 +265,17 @@ export function createEnvironment(scene: THREE.Scene, renderer: THREE.WebGLRende
   sc.bottom = -106;
   sc.near = 60;
   sc.far = 720;
-  sun.shadow.bias = -0.0004;
-  sun.shadow.normalBias = 0.12;
+  sun.shadow.bias = -0.00025;
+  sun.shadow.normalBias = 0.14;
   scene.add(sun, sun.target);
-  const rim = new THREE.DirectionalLight('#c2d7ee', 0.4);
-  rim.position.set(-200, 120, -160);
-  scene.add(rim);
-
   const pmrem = new THREE.PMREMGenerator(renderer);
-  import('three/addons/environments/RoomEnvironment.js').then(({ RoomEnvironment }) => {
-    const room = new RoomEnvironment();
-    scene.environment = pmrem.fromScene(room, 0.04).texture;
-    room.dispose();
-    pmrem.dispose();
-    scene.environmentIntensity = 0.23;
+  const ready = new HDRLoader().loadAsync(`${import.meta.env.BASE_URL}textures/pbr/wide_street_02-hdri.hdr`).then(hdr => {
+    hdr.mapping = THREE.EquirectangularReflectionMapping;
+    scene.environment = pmrem.fromEquirectangular(hdr).texture;
+    // This HDRI supplies diffuse/reflection detail; the scene's single sun casts shadows.
+    scene.environmentIntensity = .72;
+    scene.environmentRotation.y = 1.8;
+    hdr.dispose(); pmrem.dispose();
   });
-  return { sun, sunDir };
+  return { sun, sunDir, ready };
 }

@@ -5,6 +5,7 @@ import { FLOOR, RIM, TEAMS, THREE_POINT } from '../config';
 import { mulberry32 } from '../data/random';
 import { numberTexture, type Scoreboard } from './signs';
 import { BALL_FLOOR, BALL_RADIUS, createBasketball, createBallContactShadow } from './ball';
+import { playerMaterial } from './athlete-material';
 
 type TeamId = 0 | 1;
 /** fetch → inbound → advance → set ⇄ pass → shot → (fetch | loose) */
@@ -32,64 +33,45 @@ const SPOTS = [
   new THREE.Vector2(-7, -7.5),
 ];
 
-/** One draw call per body: every face carries a region code; the palette is per player. */
-function playerMaterial(colors: THREE.Color[]) {
-  const m = new THREE.MeshStandardMaterial({ roughness: 0.8 });
-  const uniforms = { uPalette: { value: colors } };
-  m.userData.palette = uniforms;
-  m.onBeforeCompile = (shader) => {
-    shader.uniforms.uPalette = uniforms.uPalette;
-    shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', `#include <common>\nattribute vec4 region;\nuniform vec3 uPalette[${REGIONS.length}];\nvarying vec3 vRegionColor;\nvarying vec3 vClothPosition;\nvarying float vRegion;`)
-      .replace(
-        '#include <begin_vertex>',
-        `#include <begin_vertex>
-        int ri = int(floor(region.r * 16.0));
-        vRegion = float(ri);
-        vClothPosition = position;
-        vRegionColor = uPalette[0];
-        for (int i = 1; i < ${REGIONS.length}; i++) { if (i == ri) vRegionColor = uPalette[i]; }
-        vRegionColor *= region.g > 0.1 ? region.g : 1.0;`,
-      );
-    shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vRegionColor;\nvarying vec3 vClothPosition;\nvarying float vRegion;')
-      .replace('vec4 diffuseColor = vec4( diffuse, opacity );', `
-        float isCloth = step(0.5, vRegion) * (1.0 - step(4.5, vRegion));
-        vec2 weaveUV = vec2(vClothPosition.x * 72.0, vClothPosition.y * 64.0 + vClothPosition.z * 77.0);
-        float visibleWeave = 1.0 - smoothstep(0.7, 2.2, max(fwidth(weaveUV.x), fwidth(weaveUV.y)));
-        float knit = sin(weaveUV.x) * sin(weaveUV.y);
-        float fabric = 1.0 + isCloth * knit * visibleWeave * 0.075;
-        vec4 diffuseColor = vec4(diffuse * vRegionColor * fabric, opacity);`)
-      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-        float micro = sin(vClothPosition.x * 183.0) * sin(vClothPosition.y * 197.0) * sin(vClothPosition.z * 171.0);
-        float poreAA = 1.0 - smoothstep(.45, 1.2, length(fwidth(vClothPosition * 183.0)));
-        roughnessFactor = vRegion < .5 ? .63 + micro * poreAA * .035 :
-          (vRegion > 8.5 ? .96 : (vRegion > 6.5 && vRegion < 8.5 ? .34 : (vRegion > 4.5 && vRegion < 5.5 ? .77 : .9)));`);
-  };
-  return m;
+interface LegPlant {
+  hip: THREE.Object3D;
+  knee: THREE.Object3D;
+  foot: THREE.Object3D;
+  anchor: THREE.Vector3;
+  locked: boolean;
 }
 
-/** Ink outline that stays about the same thickness on screen at any distance. */
-const outlineMaterial = (() => {
-  const m = new THREE.MeshBasicMaterial({ color: '#352132', side: THREE.BackSide });
-  m.onBeforeCompile = (shader) => {
-    shader.uniforms.outlineWidth = { value: 0.0003 };
-    shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float outlineWidth;').replace(
-      '#include <project_vertex>',
-      `#include <project_vertex>
-      #ifdef USE_SKINNING
-        vec3 outlineN = objectNormal;
-      #else
-        vec3 outlineN = normal;
-      #endif
-      vec4 clipN = projectionMatrix * vec4(normalize(normalMatrix * outlineN), 0.0);
-      vec2 dir = clipN.xy / max(length(clipN.xy), 1e-4);
-      dir.x *= projectionMatrix[0][0] / projectionMatrix[1][1];
-      gl_Position.xy += dir * outlineWidth * gl_Position.w;`,
-    );
-  };
-  return m;
-})();
+// Analytic two-bone IK preserves the authored knee direction and sole orientation.
+// Reused temporaries keep ten animated players allocation-free during foot locking.
+const ikHip = new THREE.Vector3(), ikKnee = new THREE.Vector3(), ikFoot = new THREE.Vector3();
+const ikDirection = new THREE.Vector3(), ikPole = new THREE.Vector3(), ikJoint = new THREE.Vector3();
+const ikFrom = new THREE.Vector3(), ikTo = new THREE.Vector3();
+const ikRotation = new THREE.Quaternion(), ikWorld = new THREE.Quaternion(), ikParent = new THREE.Quaternion();
+const ikSole = new THREE.Quaternion();
+function worldRotation(bone: THREE.Object3D, rotation: THREE.Quaternion) {
+  if (bone.parent) { bone.parent.getWorldQuaternion(ikParent).invert(); bone.quaternion.copy(ikParent).multiply(rotation); }
+  else bone.quaternion.copy(rotation);
+  bone.updateWorldMatrix(false, true);
+}
+function solvePlantedLeg(leg: LegPlant, target: THREE.Vector3) {
+  leg.hip.getWorldPosition(ikHip); leg.knee.getWorldPosition(ikKnee); leg.foot.getWorldPosition(ikFoot);
+  leg.foot.getWorldQuaternion(ikSole);
+  const upper = ikHip.distanceTo(ikKnee), lower = ikKnee.distanceTo(ikFoot);
+  ikDirection.copy(target).sub(ikHip);
+  const distance = THREE.MathUtils.clamp(ikDirection.length(), Math.abs(upper - lower) + .001, upper + lower - .001);
+  ikDirection.normalize();
+  ikPole.copy(ikKnee).sub(ikHip).addScaledVector(ikDirection, -ikPole.dot(ikDirection)).normalize();
+  const along = (upper * upper - lower * lower + distance * distance) / (2 * distance);
+  ikJoint.copy(ikHip).addScaledVector(ikDirection, along).addScaledVector(ikPole, Math.sqrt(Math.max(0, upper * upper - along * along)));
+  ikFrom.copy(ikKnee).sub(ikHip).normalize(); ikTo.copy(ikJoint).sub(ikHip).normalize();
+  ikRotation.setFromUnitVectors(ikFrom, ikTo); leg.hip.getWorldQuaternion(ikWorld).premultiply(ikRotation);
+  worldRotation(leg.hip, ikWorld);
+  leg.knee.getWorldPosition(ikKnee); leg.foot.getWorldPosition(ikFoot);
+  ikFrom.copy(ikFoot).sub(ikKnee).normalize(); ikTo.copy(target).sub(ikKnee).normalize();
+  ikRotation.setFromUnitVectors(ikFrom, ikTo); leg.knee.getWorldQuaternion(ikWorld).premultiply(ikRotation);
+  worldRotation(leg.knee, ikWorld);
+  worldRotation(leg.foot, ikSole);
+}
 
 interface Player {
   team: TeamId;
@@ -104,6 +86,7 @@ interface Player {
   leftHand: THREE.Object3D;
   aim: number | null;
   pos: THREE.Vector2;
+  previousPos: THREE.Vector2;
   target: THREE.Vector2;
   heading: number;
   speed: number;
@@ -113,6 +96,9 @@ interface Player {
   dunkGrip: THREE.Vector3;
   contactShadow: ReturnType<typeof createBallContactShadow>;
   feet: THREE.Object3D[];
+  legs: LegPlant[];
+  dribbleAction: THREE.AnimationAction;
+  dribbleActive: boolean;
 }
 
 interface Flight {
@@ -226,6 +212,8 @@ export class GameSim implements Scoreboard {
     return this.cinematicHold > 0 ? 'celebrate' : 'play';
   }
 
+  get cinematicHeading(): number { return (this.dunker ?? this.featured ?? this.holder ?? this.players[0]).heading; }
+
   get attackingDirection(): number { return dirOf((this.dunker ?? this.featured ?? this.holder)?.team ?? this.offense); }
 
   /** Start a highlight from the current possession; never teleport players or the live ball. */
@@ -257,8 +245,7 @@ export class GameSim implements Scoreboard {
     this.assignTargets();
     if (this.pendingScenario && this.holder) { const scenario = this.pendingScenario; this.pendingScenario = null; this.runQaScenario(scenario); }
     this.think();
-    for (const p of this.players) this.movePlayer(p, dt);
-    this.separate(dt);
+    for (const p of this.players) { p.previousPos.copy(p.pos); this.movePlayer(p, dt); }
     if (this.dunker) {
       this.dunkTime += dt;
       // The approach travels under the ball hand; all vertical movement is authored in the rig.
@@ -269,9 +256,23 @@ export class GameSim implements Scoreboard {
         this.playOnce(landed, 'Land', landed.actions.Land.getClip().duration);
       }
     }
+    this.separate();
     for (const p of this.players) {
+      // Match forward gait to the resolved step; a backwards contact correction
+      // must not drive a forward run cycle or feed acceleration into a blocked body.
+      const travelX = (p.pos.x - p.previousPos.x) / Math.max(dt, 1e-5);
+      const travelZ = (p.pos.y - p.previousPos.y) / Math.max(dt, 1e-5);
+      const forward = travelX * Math.sin(p.heading) + travelZ * Math.cos(p.heading);
+      p.speed = p.team !== this.offense && p.speed < 3
+        ? Math.hypot(travelX, travelZ) : Math.max(0, forward);
       p.busy = Math.max(0, p.busy - dt);
       this.animate(p);
+      const dribbling = p === this.holder && (p.current === 'RunDribble' || p.current === 'IdleDribble') && this.phase !== 'inbound';
+      if (dribbling !== p.dribbleActive) {
+        if (dribbling) { p.dribbleAction.enabled = true; p.dribbleAction.setEffectiveWeight(1).fadeIn(.16).play(); }
+        else p.dribbleAction.fadeOut(.08);
+        p.dribbleActive = dribbling;
+      }
       p.mixer.update(dt);
       const jumpWeight = this.dunker === p
         ? THREE.MathUtils.smoothstep(this.dunkTime, .20, .5) * (1 - THREE.MathUtils.smoothstep(this.dunkTime, .85, p.actions.Dunk.getClip().duration)) : 0;
@@ -280,6 +281,7 @@ export class GameSim implements Scoreboard {
     }
     this.group.updateMatrixWorld(true);
     for(const p of this.players) {
+      this.plantFeet(p);
       let footHeight=0;
       if(p.feet.length) footHeight=Math.min(...p.feet.map(foot=>{foot.getWorldPosition(this.tmp3);this.group.worldToLocal(this.tmp3);return this.tmp3.y;}));
       p.contactShadow.position.set(p.pos.x,.071,p.pos.y);
@@ -417,8 +419,11 @@ export class GameSim implements Scoreboard {
 
   private playOnce(p: Player, clip: Clip, duration: number) {
     const mode = this.ballState.mode;
-    if (mode.kind === 'held' && mode.owner === p && mode.gatherAge >= mode.gatherDuration) {
-      mode.gatherFrom.copy(this.ballPos); mode.gatherAge = 0; mode.gatherDuration = .18;
+    if (mode.kind === 'held' && mode.owner === p) {
+      // A crossover/shot may interrupt a catch gather. Start from the visible ball
+      // even then, rather than keeping an almost-complete blend to the old palm.
+      const remaining = Math.max(0, mode.gatherDuration - mode.gatherAge);
+      mode.gatherFrom.copy(this.ballPos); mode.gatherAge = 0; mode.gatherDuration = Math.max(.18, remaining);
     }
     const action = p.actions[clip];
     action.reset();
@@ -598,7 +603,10 @@ export class GameSim implements Scoreboard {
     let bestD = 1.8;
     for (const p of this.players) {
       const d = this.distToRest(p);
-      if (d < bestD) {
+      // A reset may leave the ball above the rim or near a shot apex.
+      // Horizontal proximity alone must never grant possession of an unreachable ball.
+      const reachable = this.ballPos.y <= 7.1 * p.height;
+      if (reachable && d < bestD) {
         bestD = d;
         best = p;
       }
@@ -637,12 +645,13 @@ export class GameSim implements Scoreboard {
     if (dist > 0.001 && p.speed > 0.01) {
       // Turn before sprinting: bodies no longer skate sideways through sharp cuts.
       const turn = Math.atan2(this.tmp.x,this.tmp.y)-p.heading;
-      const steering = p.team === this.offense ? .25+.75*Math.max(0,Math.cos(turn)) : 1;
+      const lateralDefense = p.team !== this.offense && desired < 3;
+      const steering = lateralDefense ? 1 : .1 + .9 * Math.max(0, Math.cos(turn));
       const travel = Math.min(p.speed*steering*dt,dist);
       p.pos.addScaledVector(this.tmp.normalize(),travel);
       p.speed = travel / Math.max(dt,1e-5);
     }
-    const defending = p.team !== this.offense && p.speed < 3;
+    const defending = p.team !== this.offense && desired < 3;
     const face = p.busy > 0 && p.aim !== null ? p.aim :
       !defending && desired > .1 && dist > 0.25
         ? Math.atan2(this.tmp.x, this.tmp.y)
@@ -659,7 +668,7 @@ export class GameSim implements Scoreboard {
     if (p.current === 'Land' && this.cinematicHold > 0 && p === this.featured) { this.playOnce(p, 'Celebrate', 1.2); return; }
     const wasMoving = ['Run','RunDribble','Shuffle'].includes(p.current);
     const moving = p.speed > (wasMoving ? .65 : 1.15);
-    const scale = THREE.MathUtils.clamp(p.speed / (6.34121 * p.depth), 0.15, 2.05);
+    const scale = THREE.MathUtils.clamp(p.speed / (6.34121 * p.depth), 0.15, 2.8);
     if (p === this.holder && this.phase !== 'fetch' && this.phase !== 'inbound') this.play(p, moving ? 'RunDribble' : 'IdleDribble', 0.2, moving ? scale : 1);
     else if (moving) {
       const lateral = (p.target.x - p.pos.x) * Math.cos(p.heading) - (p.target.y - p.pos.y) * Math.sin(p.heading);
@@ -670,26 +679,60 @@ export class GameSim implements Scoreboard {
     else this.play(p, 'Idle');
   }
 
-  private separate(dt: number) {
-    for (let i = 0; i < this.players.length; i++) {
-      for (let j = i + 1; j < this.players.length; j++) {
-        const a = this.players[i].pos;
-        const b = this.players[j].pos;
-        const d = a.distanceTo(b);
-        if (d < 2.4 && d > 1e-4 && this.players[i] !== this.dunker && this.players[j] !== this.dunker) {
-          const push = Math.min((2.4 - d) * .5, dt * 2.5);
-          this.tmp.copy(a).sub(b).divideScalar(d);
-          const aPlanted = this.players[i].busy > 0, bPlanted = this.players[j].busy > 0;
-          if (!aPlanted) a.addScaledVector(this.tmp, bPlanted ? push * 2 : push);
-          if (!bPlanted) b.addScaledVector(this.tmp, aPlanted ? -push * 2 : -push);
-        }
-      }
+  /** Pin the supporting sole through a stance, including gradual turns and small contact pushes.
+   * The anchor is court-local, so moving the whole game parent cannot leave a foot behind. */
+  private plantFeet(p: Player) {
+    const action = p.actions[p.current];
+    const locomotion = ['Run', 'RunDribble', 'Shuffle'].includes(p.current) && action.getEffectiveWeight() > .9;
+    const cycle = (action.time / action.getClip().duration + 1) % 1;
+    for (let side = 0; side < p.legs.length; side++) {
+      const leg = p.legs[side];
+      const phase = (cycle + side * .5) % 1;
+      const stance = locomotion && phase > .035 && phase < .48;
+      if (!stance) { leg.locked = false; continue; }
+      leg.foot.getWorldPosition(this.tmp3); this.group.worldToLocal(this.tmp3);
+      if (!leg.locked) { leg.anchor.copy(this.tmp3); leg.locked = true; }
+      // Ease into and out of the planted interval, keeping lift-off free of snapping.
+      const weight = THREE.MathUtils.smoothstep(phase, .035, .09) * (1 - THREE.MathUtils.smoothstep(phase, .43, .48))
+        * (1 - THREE.MathUtils.smoothstep(leg.anchor.distanceTo(this.tmp3), .3, .65));
+      this.tmp3.lerp(leg.anchor, weight); this.group.localToWorld(this.tmp3);
+      solvePlantedLeg(leg, this.tmp3);
     }
+  }
+
+  private separate() {
     const maxX = FLOOR.length / 2 - 1.5;
     const maxZ = FLOOR.width / 2 - 2;
-    for (const p of this.players) {
-      p.pos.x = THREE.MathUtils.clamp(p.pos.x, -maxX, maxX);
-      p.pos.y = THREE.MathUtils.clamp(p.pos.y, -maxZ, maxZ);
+    const flight = this.flight;
+    // Adult shoulders and clothed hips need a torso envelope, not the old
+    // rate-limited repulsion which could never keep up with two approaching runners.
+    // Arms remain outside this 2.5-foot envelope and may reach/contact normally.
+    const mobility = (p: Player) => p === this.dunker ? 0
+      : p === this.holder || p === flight?.holder || p === flight?.receiver ? .15
+      : p.busy > 0 ? .35 : 1;
+    for (let iteration = 0; iteration < 5; iteration++) {
+      for (let i = 0; i < this.players.length; i++) {
+        for (let j = i + 1; j < this.players.length; j++) {
+          const first = this.players[i], second = this.players[j];
+          const a = first.pos, b = second.pos;
+          const minimum = 1.25 * (first.height + second.height);
+          const distance = a.distanceTo(b);
+          if (distance >= minimum) continue;
+          if (distance > 1e-5) this.tmp.copy(a).sub(b).divideScalar(distance);
+          else this.tmp.set(Math.cos(i * 1.7 + j), Math.sin(i * 1.7 + j));
+          const weightA = mobility(first), weightB = mobility(second), sum = weightA + weightB;
+          if (!sum) continue;
+          const penetration = minimum - distance + .001;
+          a.addScaledVector(this.tmp, penetration * weightA / sum);
+          b.addScaledVector(this.tmp, -penetration * weightB / sum);
+        }
+      }
+      // Resolve against the boundary on each iteration, so a contact cannot push
+      // somebody outside the court and reintroduce overlap at the final clamp.
+      for (const p of this.players) {
+        p.pos.x = THREE.MathUtils.clamp(p.pos.x, -maxX, maxX);
+        p.pos.y = THREE.MathUtils.clamp(p.pos.y, -maxZ, maxZ);
+      }
     }
   }
 
@@ -758,11 +801,11 @@ export class GameSim implements Scoreboard {
       this.handWorld(h, this.tmp3);
       const dribbling = (h.current === 'RunDribble' || h.current === 'IdleDribble') && this.phase !== 'inbound';
       if (dribbling) {
-        const action = h.actions[h.current];
-        const period = this.dribblePeriod(h.current, action.getClip().duration);
+        const action = h.dribbleAction;
+        const period = action.getClip().duration;
         const phase = (action.time % period) / period;
         const top = Math.max(this.tmp3.y, BALL_FLOOR);
-        this.tmp3.y = BALL_FLOOR + (top - BALL_FLOOR) * Math.sin(Math.PI * phase);
+        this.tmp3.y = BALL_FLOOR + (top - BALL_FLOOR) * 4 * phase * (1 - phase);
       } else if (h.current === 'Crossover') {
         const phase = h.actions.Crossover.time / h.actions.Crossover.getClip().duration;
         const right = this.tmp3.clone();
@@ -849,7 +892,7 @@ export class GameSim implements Scoreboard {
     const seed = team * 5 + slot;
     const physiques = [[.98, .985, .96], [.94, 1.03, .95], [1.04, 1.015, 1.02], [1.10, .97, 1.06], [.99, 1.06, 1.00]];
     const shape = physiques[(slot + team * 2) % physiques.length];
-    root.scale.set(shape[0], shape[1], shape[2]);
+    root.scale.setScalar(shape[1]);
     const look = LOOKS[(slot + team * 3) % LOOKS.length];
     const palette = REGIONS.map((r) => {
       switch (r) {
@@ -878,7 +921,6 @@ export class GameSim implements Scoreboard {
     const body = playerMaterial(palette);
     const number = [0, 1, 3, 5, 7, 11, 12, 23, 24, 30][(seed * 3) % 10] + (team ? 2 : 0);
     const numberMat = new THREE.MeshStandardMaterial({ map: numberTexture(number, kit.trim, kit.jersey), alphaTest: 0.5, roughness: 0.7 });
-    const outlines: THREE.SkinnedMesh[] = [];
     root.traverse((o) => {
       const mesh = o as THREE.SkinnedMesh;
       if (!mesh.isMesh) return;
@@ -904,23 +946,23 @@ export class GameSim implements Scoreboard {
         if (index !== undefined) mesh.morphTargetInfluences[index] = .55 + (seed % 4) * .1;
       }
       if (/^(Hair|Headband)/.test(base)) mesh.visible = look.includes(base);
-      if (mesh.visible && mesh.isSkinnedMesh && !root.getObjectByName('VoxelAthlete')) outlines.push(mesh);
     });
-    for (const mesh of outlines) {
-      const outline = new THREE.SkinnedMesh(mesh.geometry, outlineMaterial);
-      outline.bind(mesh.skeleton, mesh.bindMatrix);
-      outline.morphTargetInfluences = mesh.morphTargetInfluences;
-      outline.frustumCulled = false;
-      outline.position.copy(mesh.position);
-      outline.quaternion.copy(mesh.quaternion);
-      outline.scale.copy(mesh.scale);
-      mesh.parent!.add(outline);
-    }
     this.group.add(root);
 
     const mixer = new THREE.AnimationMixer(root);
     const actions = {} as Record<Clip, THREE.AnimationAction>;
-    for (const clip of gltf.animations) {
+    // Keep the hand/push rhythm independent of stride speed. Otherwise sprinting
+    // accelerates the ball bounce to an implausible 2–3 cycles per second.
+    const armNames = new Set<string>();
+    for (const side of ['l', 'r']) root.getObjectByName(`clavicle_${side}`)?.traverse(o => armNames.add(o.name));
+    const isArmTrack = (track: THREE.KeyframeTrack) => armNames.has(track.name.slice(0, track.name.lastIndexOf('.')));
+    const sourceDribble = gltf.animations.find(clip => clip.name === 'IdleDribble')!;
+    const dribbleClip = new THREE.AnimationClip('DribbleArms', sourceDribble.duration, sourceDribble.tracks.filter(isArmTrack));
+    const dribbleAction = mixer.clipAction(dribbleClip);
+    for (const importedClip of gltf.animations) {
+      const clip = ['RunDribble', 'IdleDribble'].includes(importedClip.name)
+        ? new THREE.AnimationClip(importedClip.name, importedClip.duration, importedClip.tracks.filter(track => !isArmTrack(track)))
+        : importedClip;
       const action = mixer.clipAction(clip);
       if (['Shoot', 'Pass', 'Dunk', 'Catch', 'Crossover', 'Jump', 'Land', 'Rebound'].includes(clip.name)) {
         action.setLoop(THREE.LoopOnce, 1);
@@ -948,8 +990,12 @@ export class GameSim implements Scoreboard {
     const contactShadow=createBallContactShadow();contactShadow.name='player-contact-shadow';
     contactShadow.scale.set(1.45,1.05,1);this.group.add(contactShadow);
     const feet=['foot_l','foot_r'].map(name=>root.getObjectByName(name)).filter((o): o is THREE.Object3D => !!o);
+    const legs = ['l', 'r'].flatMap(side => {
+      const hip = root.getObjectByName(`thigh_${side}`), knee = root.getObjectByName(`calf_${side}`), foot = root.getObjectByName(`foot_${side}`);
+      return hip && knee && foot ? [{ hip, knee, foot, anchor: new THREE.Vector3(), locked: false }] : [];
+    });
     return {
-      contactShadow, feet,
+      contactShadow, feet, legs, dribbleAction, dribbleActive: false,
       team,
       slot,
       root,
@@ -961,12 +1007,13 @@ export class GameSim implements Scoreboard {
       leftHand,
       aim: null,
       pos: new THREE.Vector2(),
+      previousPos: new THREE.Vector2(),
       target: new THREE.Vector2(),
       heading: team === 0 ? Math.PI / 2 : -Math.PI / 2,
       speed: 0,
-      reach: shape[0],
+      reach: shape[1],
       height: shape[1],
-      depth: shape[2],
+      depth: shape[1],
       dunkGrip,
     };
   }

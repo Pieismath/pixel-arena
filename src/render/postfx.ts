@@ -78,7 +78,11 @@ export function createPostFX(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
     },
     render() {
       if (window.innerWidth < 1 || window.innerHeight < 1) return;
-      if (high && composer) composer.render();
+      if (high && composer) {
+        // The color pass builds dynamic shadows; the AO normal pass reuses that map.
+        renderer.shadowMap.needsUpdate = renderer.shadowMap.enabled;
+        composer.render();
+      }
       else renderer.render(scene, camera);
     },
   };

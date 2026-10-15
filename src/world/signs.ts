@@ -38,12 +38,12 @@ export class Painted {
 
 // --- Court ------------------------------------------------------------------------------------
 
-const PX = 12; // texture pixels per foot
+const PX = 16; // texture pixels per foot
 
 export class CourtPainter extends Painted {
   private readonly worn: HTMLCanvasElement;
 
-  constructor() {
+  constructor(private readonly aggregate?: CanvasImageSource) {
     super(FLOOR.length * PX, FLOOR.width * PX);
     this.worn = this.paintBase();
   }
@@ -66,36 +66,18 @@ export class CourtPainter extends Painted {
     ctx.fillRect(0, 0, this.w, this.h);
     ctx.fillStyle = '#c6aa7b';
     ctx.fillRect(this.X(-hl), this.Z(-hw), COURT.length * PX, COURT.width * PX);
-    // October 2021 reopening palette. Original abstract lozenges evoke the photographed
-    // charcoal mural rhythm without copying artist lettering, sponsor marks or logos.
-    ctx.save();
-    ctx.beginPath(); ctx.rect(this.X(-hl), this.Z(-hw), COURT.length * PX, COURT.width * PX); ctx.clip();
+    // Sand/charcoal from the 2021 renovation; original restrained paint layout.
+    // Leave enough quiet floor for ball readability and commercial center-court lettering.
+    ctx.fillStyle = '#343a38';
     for (const side of [-1, 1]) {
-      for (let row = 0; row < 9; row++) {
-        for (let col = 0; col < 4; col++) {
-          const x = side * (31 + col * 5.3 + (row % 2) * 0.8);
-          const z = -23 + row * 5.8;
-          ctx.save(); ctx.translate(this.X(x), this.Z(z)); ctx.rotate((rnd() - .5) * .28);
-          ctx.fillStyle = '#26302f';
-          ctx.beginPath(); ctx.roundRect(-2.3 * PX, -2.25 * PX, 4.7 * PX, 4.5 * PX, [PX * 1.4, PX * .75, PX * 1.7, PX * .95]); ctx.fill();
-          if ((row + col) % 4 === 0) {
-            ctx.strokeStyle = '#c6aa7b'; ctx.lineWidth = PX * .2; ctx.lineCap = 'round';
-            ctx.beginPath(); ctx.moveTo(-PX * 1.1, -PX); ctx.bezierCurveTo(PX, -PX, -PX, PX, PX * 1.1, PX); ctx.stroke();
-          }
-          ctx.restore();
-        }
-      }
-      const x = this.X(side * 24), z = this.Z(0);
-      ctx.strokeStyle = '#26302f'; ctx.lineWidth = 2.0 * PX;
-      ctx.beginPath(); ctx.arc(x, z, 5.9 * PX, 0, Math.PI * 2); ctx.stroke();
-      ctx.strokeStyle = '#c6aa7b'; ctx.lineWidth = PX * .25;
-      for (let j = 0; j < 16; j++) {
-        const a = j * Math.PI / 8;
-        ctx.beginPath(); ctx.moveTo(x + Math.cos(a) * 5.25 * PX, z + Math.sin(a) * 5.25 * PX);
-        ctx.lineTo(x + Math.cos(a + .04) * 6.5 * PX, z + Math.sin(a + .04) * 6.5 * PX); ctx.stroke();
-      }
+      ctx.fillRect(this.X(side < 0 ? -hl : hl - 19), this.Z(-8), 19 * PX, 16 * PX);
     }
-    ctx.restore();
+    if (this.aggregate) {
+      ctx.save(); ctx.globalCompositeOperation = 'soft-light'; ctx.globalAlpha = .32;
+      const tile = 2.35 / .3048 * PX;
+      for (let y = 0; y < this.h; y += tile) for (let x = 0; x < this.w; x += tile) ctx.drawImage(this.aggregate, x, y, tile, tile);
+      ctx.restore();
+    }
     // Irregular broad patches of worn acrylic, rather than uniform digital noise.
     for (let i = 0; i < 160; i++) {
       const r = 10 + rnd() * 80;

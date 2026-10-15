@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { athleteSkinColor } from './athlete-material';
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { hash01 } from '../data/random';
 import type { ArenaState, SeatSale, SpotRef } from '../data/types';
@@ -7,7 +8,7 @@ import { SEAT_INDEX, SEATS, seatKey } from './layout';
 
 const HAIRS = ['Short', 'Afro', 'Cap'] as const;
 const SKIN = ['#f1c7a3', '#e0ac85', '#c68863', '#9c6644', '#6f4a33', '#f5d6b8', '#b07a55'];
-const SHIRTS = ['#e9e4d8', '#2b2f3a', '#c8402f', '#2f6fd0', '#f2b233', '#3a8f5a', '#7a4fb0', '#e46aa0', '#1fa7b0', '#8a8f99', '#ff7a1a', '#17a79b'];
+const SHIRTS = ['#d5d1c5', '#34373d', '#9d4941', '#496991', '#b69c5f', '#506f57', '#72627c', '#b48085', '#50888a', '#83888c', '#b46a39', '#4c7772'];
 const PANTS = ['#2d3a5c', '#1f2230', '#4a5a78', '#6b5a48', '#3b3b3b', '#8a7a62'];
 const HAIR = ['#1b1412', '#2e1f16', '#4a2f1d', '#6b4a2b', '#b08a4a', '#8e8a86'];
 const SHOES = ['#f5f2ea', '#1c1f2b', '#c8402f', '#2f6fd0'];
@@ -26,6 +27,7 @@ interface CrowdMotion {
 function fanMaterial(motion: CrowdMotion) {
   const m = new THREE.MeshStandardMaterial({ roughness: 0.88 });
   m.onBeforeCompile = (shader) => {
+    shader.uniforms.crowdSkin = { value: athleteSkinColor };
     shader.uniforms.crowdTime = motion.time;
     shader.uniforms.crowdReaction = motion.reaction;
     shader.vertexShader = shader.vertexShader
@@ -43,7 +45,9 @@ function fanMaterial(motion: CrowdMotion) {
         uniform float crowdReaction;
         varying vec3 vFan;
         varying vec3 vFanPosition;
-        varying float vCloth;`,
+        varying float vCloth;
+        varying float vFanRegion;
+        varying vec2 vFanUv;`,
       )
       .replace(
         '#include <begin_vertex>',
@@ -59,6 +63,7 @@ function fanMaterial(motion: CrowdMotion) {
         else if (r == 7) c = vec3(0.86);
         vFan = c * (region.g > .1 ? region.g : 1.0);
         vFanPosition = position;
+        vFanRegion = float(r); vFanUv = uv;
         vCloth = r == 1 ? 1.0 : 0.0;
         // All idle motion is local to the posed fan mesh. Instance matrices stay untouched
         // between actual crowd reactions, keeping hundreds of spectators inexpensive.
@@ -86,13 +91,19 @@ function fanMaterial(motion: CrowdMotion) {
         transformed.z += arms * cheering * sin(crowdTime * 3.0 + phase) * 0.08;`,
       );
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vFan;\nvarying vec3 vFanPosition;\nvarying float vCloth;')
+      .replace('#include <common>', '#include <common>\nvarying vec3 vFan;\nvarying vec3 vFanPosition;\nvarying float vCloth;\nvarying float vFanRegion;\nvarying vec2 vFanUv;\nuniform sampler2D crowdSkin;')
       .replace('vec4 diffuseColor = vec4( diffuse, opacity );', `
         // Fade the weave at distance so it cannot shimmer on a phone-sized view.
         float detail = 1.0 - smoothstep(0.25, 1.0, max(fwidth(vFanPosition.x), fwidth(vFanPosition.y)) * 95.0);
         float weave = sin(vFanPosition.y * 95.0) * sin(vFanPosition.x * 95.0) * detail;
         vec3 fanColor = vFan * (1.0 + weave * 0.035 * vCloth);
-        vec4 diffuseColor = vec4(diffuse * fanColor, opacity);`);
+        if (vFanRegion < .5) {
+          vec3 detailColor = clamp(texture2D(crowdSkin, vFanUv).rgb / vec3(.235,.113,.062), vec3(.2), vec3(1.65));
+          fanColor *= mix(vec3(1.0), detailColor, .68);
+        }
+        vec4 diffuseColor = vec4(diffuse * fanColor, opacity);`)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+        roughnessFactor = vFanRegion < .5 ? .69 : vFanRegion < 3.5 ? .93 : .83;`);
   };
   return m;
 }
@@ -104,12 +115,17 @@ interface FanBatch {
   theta: Float32Array;
   phase: Float32Array;
   count: number;
+  nearGeometry: THREE.BufferGeometry;
+  farGeometry: THREE.BufferGeometry;
+  bounds: THREE.Box3;
+  detailed: boolean;
 }
 
 export function createCrowd(gltf: GLTF) {
   const group = new THREE.Group();
   group.name = 'crowd';
   const geometries = new Map<string, THREE.BufferGeometry>();
+  const farGeometries = new Map<string, THREE.BufferGeometry>();
   gltf.scene.updateMatrixWorld(true);
   gltf.scene.traverse((o) => {
     const mesh = o as THREE.Mesh;
@@ -121,7 +137,8 @@ export function createCrowd(gltf: GLTF) {
       geo.setAttribute('region', color);
       geo.deleteAttribute('color');
     }
-    geometries.set(mesh.name.replace(/^Fan_/, ''), geo);
+    const far = mesh.name.startsWith('FanFar_');
+    (far ? farGeometries : geometries).set(mesh.name.replace(/^Fan(?:Far)?_/, ''), geo);
   });
   const motion: CrowdMotion = { time: { value: 0 }, reaction: { value: 0 } };
   const material = fanMaterial(motion);
@@ -130,7 +147,8 @@ export function createCrowd(gltf: GLTF) {
   for (const inWindow of [false,true]) for (let variant=0;variant<3;variant++) {
     const people=neighbors.filter((n,i)=>n.window===inWindow && i%3===variant);
     if(!people.length) continue;
-    const source=geometries.get(`Stand_${HAIRS[variant]}`)!;
+    const key = `Stand_${HAIRS[variant]}`;
+    const source=(inWindow ? farGeometries.get(key) : geometries.get(key)) ?? geometries.get(key)!;
     let geo=source.clone();
     if(inWindow) {
       // Crop at the window sill so legs never render through the facade below it.
@@ -147,7 +165,7 @@ export function createCrowd(gltf: GLTF) {
     }
     const attrs:Record<string,Float32Array>={iSkin:new Float32Array(people.length*3),iShirt:new Float32Array(people.length*3),iPants:new Float32Array(people.length*3),iHair:new Float32Array(people.length*3),iShoe:new Float32Array(people.length*3)};
     const moving=new Float32Array(people.length*4);
-    const mesh=new THREE.InstancedMesh(geo,material,people.length);mesh.name=inWindow?'Window residents':'Sidewalk spectators';mesh.receiveShadow=true;
+    const mesh=new THREE.InstancedMesh(geo,material,people.length);mesh.name=inWindow?'Window residents':'Sidewalk spectators';mesh.receiveShadow=true;mesh.userData.skipAO=inWindow;
     const matrix=new THREE.Matrix4(),quat=new THREE.Quaternion(),axis=new THREE.Vector3(0,1,0);
     people.forEach((person,i)=>{
       const seed=i*97+variant*133+(inWindow?41:0),scale=.84+hash01(seed)*.18;
@@ -207,7 +225,8 @@ export function createCrowd(gltf: GLTF) {
   function setState(state: ArenaState) {
     for (const b of batches) {
       group.remove(b.mesh);
-      b.mesh.geometry.dispose();
+      b.nearGeometry.dispose();
+      if (b.farGeometry !== b.nearGeometry) b.farGeometry.dispose();
       b.mesh.dispose();
     }
     batches = [];
@@ -234,19 +253,21 @@ export function createCrowd(gltf: GLTF) {
       const key = `${pose}_${hair}`;
       if (!geometries.has(key)) return;
       poseOf.set(i, pose);
-      (plan.get(key) ?? plan.set(key, []).get(key)!).push(i);
+      const sectionKey = `${key}@${_s.section}`;
+      (plan.get(sectionKey) ?? plan.set(sectionKey, []).get(sectionKey)!).push(i);
     });
 
     cardCount = 0;
     cardContext.clearRect(0,0,1280,1280);
     const tmpColor = new THREE.Color();
     let fanIndex = 0;
-    for (const [key, seats] of plan) {
+    for (const [batchKey, seats] of plan) {
+      const key = batchKey.split('@')[0];
       const geo = geometries.get(key)!;
       const mesh = new THREE.InstancedMesh(geo, material, seats.length);
       mesh.castShadow = false; // hundreds of fans in the shadow pass cost more than they add
       mesh.receiveShadow = true;
-      mesh.frustumCulled = false;
+      mesh.frustumCulled = true;
       const instanceMotion = new Float32Array(seats.length * 4);
       const attrs = {
         iSkin: new Float32Array(seats.length * 3),
@@ -262,6 +283,10 @@ export function createCrowd(gltf: GLTF) {
         theta: new Float32Array(seats.length),
         phase: new Float32Array(seats.length),
         count: seats.length,
+        nearGeometry: geo,
+        farGeometry: geo,
+        bounds: new THREE.Box3(),
+        detailed: true,
       };
       seats.forEach((si, k) => {
         const s = SEATS[si];
@@ -317,9 +342,20 @@ export function createCrowd(gltf: GLTF) {
       const g = geo.clone();
       g.setAttribute('iMotion', new THREE.InstancedBufferAttribute(instanceMotion, 4));
       for (const [name, data] of Object.entries(attrs)) g.setAttribute(name, new THREE.InstancedBufferAttribute(data, 3));
+      const farSource = farGeometries.get(key);
+      const far = farSource ? farSource.clone() : g;
+      if (far !== g) {
+        far.setAttribute('iMotion', g.getAttribute('iMotion'));
+        for (const name of Object.keys(attrs)) far.setAttribute(name, g.getAttribute(name));
+      }
+      batch.nearGeometry = g; batch.farGeometry = far;
       mesh.geometry = g;
       mesh.instanceMatrix.needsUpdate = true;
       group.add(mesh);
+      mesh.computeBoundingBox();
+      batch.bounds.copy(mesh.boundingBox!).expandByScalar(.3);
+      mesh.computeBoundingSphere();
+      if (mesh.boundingSphere) mesh.boundingSphere.radius += 2; // shader breathing and cheer allowance
       batches.push(batch);
       fanIndex += seats.length;
     }
@@ -378,6 +414,17 @@ export function createCrowd(gltf: GLTF) {
     pickables: [cards, proxy] as THREE.Object3D[],
     setState,
     update,
+    updateLod(camera: THREE.Camera) {
+      for (const batch of batches) {
+        const distance = batch.bounds.distanceToPoint(camera.position);
+        const detailed = distance < (batch.detailed ? 45 : 35);
+        if (detailed === batch.detailed) continue;
+        batch.detailed = detailed;
+        batch.mesh.geometry = detailed ? batch.nearGeometry : batch.farGeometry;
+        // Small, distant faces do not benefit from an extra normal/AO geometry pass.
+        batch.mesh.userData.skipAO = !detailed;
+      }
+    },
     startWave() {
       wave.active = true;
       wave.angle = -Math.PI;

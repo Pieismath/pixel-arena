@@ -1,43 +1,28 @@
-# Current voxel cast and city assets
+# Shipped adult athletes and crowd
 
-The shipped `baller.glb` and `fans.glb` now use original faceted geometry with chamfered heads, tapered limbs and continuous jerseys, stepped hairstyles, pixel faces, sneakers and basketball kits authored in `blender/build_voxel_characters.py`. The two user-supplied images are visual direction only; no source pixels, stock artwork or watermarks are embedded.
+`baller.glb` and `fans.glb` are generated with `blender/build_characters.py` from continuous MakeHuman anatomy, authored skin weights and separately modeled clothing and footwear. The voxel generator is retained only as historical source and is not the shipped asset pipeline. No supplied stock-reference image or watermark is used in the models.
 
-The 55-bone rig uses the CC0 MakeHuman/MPFB game-engine skeleton. The 15 basketball animation clips and palm-contact sockets are project-authored and retained in `blender/sources/basketball-motion.blend`. [MakeHuman license](https://github.com/makehumancommunity/makehuman/blob/master/LICENSE.md).
+## Source assets and licenses
 
-The city and cars are original Blender geometry in `blender/build_park.py`; masonry, glass, road and court textures are authored in code. The dense adjoining street blocks are an artistic interpretation, not an exact reconstruction of Rucker Park's surrounding buildings. The court retains the 2021 sand/charcoal direction.
+- **MakeHuman Community:** hm08 anatomy, macro targets, game-engine skeleton/weights and eyes — **CC0**. Source: https://github.com/makehumancommunity/makehuman/blob/master/LICENSE.md . The official reuse statement covers core meshes, targets and skins: https://static.makehumancommunity.org/mpfb/faq/build_other_chargen.html . Authoring uses MPFB; its code is not shipped in the browser.
+- **Namuhekam, `male_polo_shirt`: CC0.** Weighted mesh tailored into a sleeveless singlet; cut neckline and armholes, sewn trim/hem thickness, fit and folds modified. The asset's `Polo_Normal_OpenGL.png` and `Polo_Roughness.png` are reduced to 1024² and used by the runtime. Original license header: `licenses/Namuhekam.txt`.
+- **Elvaerwyn, `elvs_male_swim_shorts1`: CC BY.** Weighted mesh modified for basketball proportions and sewn hem thickness. The original author identifies `CC-by` without a version; that exact header is preserved in `licenses/Elvaerwyn.txt`. Official asset index: https://static.makehumancommunity.org/assets/assetpacks/pants03.html . Source: http://www.makehumancommunity.org/clothes/elvs_male_swim_shorts1.html . No version is invented here.
+- **punkduck, `TennisShoes`: CC BY 3.0.** Modeled shoes, laces, toe panels and outsole; material regions changed. Original color/normal maps reduced to 1024² and used by the runtime. Source: http://www.makehumancommunity.org/clothes/tennis_shoes.html ; license: https://creativecommons.org/licenses/by/3.0/ ; retained header: `licenses/punkduck.txt`.
+- **Mindfront (Sweden), `skin_male_african_middleage`: CC0 1.0.** Original 2048² color, normal and specular maps acquired from the official `skins02_cc0.zip` asset pack. Color stays 2048²; normal/specular become 1024². Runtime palette tint preserves the source's local facial/palm detail; its specular map drives a bounded roughness range. Pack and license listing: https://static.makehumancommunity.org/assets/assetpacks/skins02.html . Exact source: https://files2.makehumancommunity.org/asset_packs/skins02/skins02_cc0.zip . The source PNG itself labels Mindfront and CC0; original material settings are retained in `licenses/Mindfront-skin.mhmat`. This is an authored skin set, not a claim of calibrated scanned skin or a subsurface-scattering renderer.
 
-Build the cast with Blender 5.2:
+The fitted socks, scalp variants, beard, brows, facial morphs, tailoring, palette shader, 15 basketball animation clips and baked crowd LOD are project modifications/authored work. The previous Joel Palmius CC0 source socks are retained in the bind-pose source, but runtime socks are now derived from the weighted calf surface.
 
-```sh
-/Applications/Blender.app/Contents/MacOS/Blender --background --factory-startup --python blender/build_voxel_characters.py
-```
-
-The main voxel body has 4,006 triangles; the most detailed optional hairstyle has 1,740. Crowd geometry is baked into 15 pose/style batches. Run and RunDribble are re-authored with shorter strides and shoulder counter-rotation; action clips retain their contact timing. The ball and its physical depth behavior are unchanged.
-
-## Earlier anatomical version retained in source history
-
-The previous `build_characters.py` and adult source blend remain available for reproducibility. Their original credits follow; this clothing and body geometry is no longer used by the shipped voxel cast.
-
-# Adult athlete source
-
-`adult-athlete-source.blend` is the editable bind-pose source used by `../build_characters.py`. It was generated in Blender 5.2 with MPFB from MakeHuman's continuous hm08 anatomical mesh and the game-engine skeleton. It contains separately modeled, weighted clothing and footwear, not primitive body parts.
-
-The build command needs only Blender; MPFB is not needed after the source is baked:
+## Build and runtime contract
 
 ```sh
 /Applications/Blender.app/Contents/MacOS/Blender --background --factory-startup --python blender/build_characters.py -- public/models --preview work/athlete/qa
+python3 blender/verify_characters.py
 ```
 
-The source and output use these graphical assets:
+The 6.35-foot source athlete retains 55 bones (30 finger joints and `ballGripR`/`ballGripL`), 15 animation clips, separate face morphs and the original asset UV layouts. `src/world/athlete-material.ts` loads seven shared maps from `public/textures/athlete` for skin, knit fabric and shoes; the main body remains one render primitive. These shared runtime textures are deliberately not duplicated inside the GLBs.
 
-- MakeHuman Community hm08 body, macro targets, game-engine weights, eyes and short04 source hair — **CC0**. https://github.com/makehumancommunity/makehuman/blob/master/LICENSE.md ; https://static.makehumancommunity.org/mpfb/faq/build_other_chargen.html
-- Namuhekam, `male_polo_shirt` — **CC0**, as stated in the source `.mhclo`. Modified into a sleeveless basketball singlet with a cut neckline, armholes and material trim.
-- Elvaerwyn, `elvs_male_swim_shorts1` — **CC BY**, as stated in source `.mhclo` and the official asset-pack index: https://static.makehumancommunity.org/assets/assetpacks/pants03.html . Modified proportions, palette, waistband and hems. Source: https://www.makehumancommunity.org/clothes/elvs_male_swim_shorts1.html . The source header records `CC-by` without a version; the original header is preserved.
-- punkduck, `TennisShoes` — **CC BY 3.0**, as stated in the source `.mhclo`. https://www.makehumancommunity.org/clothes/tennis_shoes.html . Modified material regions and coloring. License: https://creativecommons.org/licenses/by/3.0/
-- Joel Palmius, `CrudeHighSocks` — **CC0**, as stated in source `.mhclo`. Modified to crew length.
+Main anatomy/kit body: **26,865 triangles**. Optional hair: **1,186**; beard: **808**; headband: **198**; two number planes: **4**. Most detailed visible athlete: **29,061 triangles**. Crowd: 15 baked pose/style meshes in each of two tiers: **2,972–3,082 triangles/person near** (`Fan_` prefix) and **1,078–1,119 far** (`FanFar_` prefix). Near simplification preferentially retains head and finger surfaces. Every mesh has one primitive and no live skeleton; both tiers share exactly the same seat/ground origin. Rebuild only the crowd with `--fans-only` to leave `baller.glb` untouched. Runtime crowd uses the same continuous silhouettes, regional palettes and one shared skin-color sampler, with simplified skin/fabric/rubber roughness; it omits the hero normal and specular samplers.
 
-The original author/license headers are retained under `public/models/licenses/`. These credits travel with the public assets. The authored animations, jersey tailoring, scalp variants, facial morphs, region palettes and crowd LOD are project work. MPFB is a build-time tool; its code is not included in the browser bundle.
+Run and RunDribble stance calibration: **6.34121 feet/second** at default clip speed; Shuffle: **2.516097 feet/second**. The default Dunk frame 18 grip reaches **10.1435 feet**. Runtime travel, stance correction and contact testing are in `src/world/players.ts` and the ball test harness; the exported animation clips alone do not guarantee natural contact through blends.
 
-Run `python3 blender/verify_characters.py` after exporting to validate the skin, socket, UV, animation and crowd-batch contracts. Running stance speed is 9.36084 court feet/second; shuffle stance speed is 2.516097 feet/second. Retiming must match actual world travel.
-
-Final export: 55 bones (including 30 finger joints and 2 palm-contact sockets), 15 clips, 21,363 triangles in the combined anatomy/kit body, and at most 23,583 visible triangles with hair, beard, headband and number decals. Crowd LOD is 862–901 triangles per person across 15 instanced pose/style batches. Hand contact is measured from `ballGripR`/`ballGripL`; default Dunk frame 18 reaches 10.1435 court feet.
+The city remains project-authored Blender geometry. Environment-specific sources and material credits are documented separately in the repository's asset source records.

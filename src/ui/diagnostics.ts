@@ -2,9 +2,9 @@ import type * as THREE from 'three';
 import type { GameSim } from '../world/players';
 
 /** Optional, visible audit surface. It exercises the same public action paths as gameplay. */
-export function createDiagnostics(game: GameSim, renderer: THREE.WebGLRenderer, quality: () => string, lowerGraphics: () => void, disableShadows: () => void) {
+export function createDiagnostics(game: GameSim, renderer: THREE.WebGLRenderer, quality: () => string, lowerGraphics: () => void, disableShadows: () => void, scene: THREE.Scene, inspectSection: (name: string) => void, togglePause: () => boolean) {
   const params = new URLSearchParams(location.search);
-  if (!params.has('inspect') && !params.has('audit')) return { frame(_dt: number, _elapsed: number) {} };
+  if (!params.has('inspect') && !params.has('audit')) return { frame(_dt: number, _elapsed: number, _paused?: boolean) {} };
   const container = document.createElement('aside'); container.id = 'audit-panel';
   const stats = document.createElement('output'); stats.id = 'render-metrics'; container.append(stats);
   const benchmark = document.createElement('pre'); benchmark.id = 'benchmark-result'; container.append(benchmark);
@@ -16,7 +16,26 @@ export function createDiagnostics(game: GameSim, renderer: THREE.WebGLRenderer, 
       button.addEventListener('click', () => game.runQaScenario(scenario)); actions.append(button);
     });
     for (const [label, action] of [['Lower graphics', lowerGraphics], ['Disable shadows', disableShadows]] as const) { const button = document.createElement('button'); button.textContent = label; button.addEventListener('click', action); actions.append(button); }
-    container.append(actions,ball);
+    for (const label of ['Neighborhood', 'Facade', 'Street', 'Surface', 'Cage', 'Hoop', 'Player']) {
+      const button = document.createElement('button'); button.textContent = `${label} detail`;
+      button.addEventListener('click', () => inspectSection(label)); actions.append(button);
+    }
+    const pause = document.createElement('button'); pause.textContent = 'Pause motion';
+    pause.addEventListener('click', () => { pause.textContent = togglePause() ? 'Resume motion' : 'Pause motion'; }); actions.append(pause);
+    const profile = document.createElement('pre'); profile.id = 'geometry-budget';
+    const categories: Record<string, {meshes:number; triangles:number}> = {};
+    scene.traverse(object => {
+      const mesh = object as THREE.Mesh; if (!mesh.isMesh) return;
+      let parent: THREE.Object3D = object; while(parent.parent && parent.parent !== scene) parent = parent.parent;
+      const category = parent.name || parent.type;
+      const entry = categories[category] ??= {meshes:0, triangles:0};
+      entry.meshes++; entry.triangles += ((mesh.geometry.index?.count ?? mesh.geometry.attributes.position.count)/3) * ((mesh as THREE.InstancedMesh).isInstancedMesh ? (mesh as THREE.InstancedMesh).count : 1);
+    });
+    profile.textContent = JSON.stringify(categories); profile.hidden = true;
+    const hide = document.createElement('button'); hide.textContent = 'Hide diagnostics';
+    hide.addEventListener('click', () => { container.hidden = true; }); actions.append(hide);
+    document.addEventListener('keydown', event => { if (event.code === 'F8') container.hidden = !container.hidden; });
+    container.append(actions,ball,profile);
   }
   document.body.append(container);
   const samples: number[] = [];
@@ -24,7 +43,8 @@ export function createDiagnostics(game: GameSim, renderer: THREE.WebGLRenderer, 
   let drawCalls = 0, triangles = 0;
   let tier = ''; 
   return {
-    frame(dt: number, elapsed: number) {
+    frame(dt: number, elapsed: number, paused = false) {
+      if (paused) return;
       const currentTier = `${quality()}/${renderer.getPixelRatio()}/${renderer.shadowMap.enabled}/${innerWidth}/${innerHeight}`;
       if (tier !== currentTier) { samples.length = 0; collected = drawCalls = triangles = 0; tier = currentTier; benchmark.textContent = ''; }
       if (elapsed > 8 && collected < 30 && dt > 0) {

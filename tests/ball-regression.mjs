@@ -1,6 +1,6 @@
 /** Run with `node tests/ball-regression.mjs`.
  * Exercises the real GLB, Three.js skeletons/mixers and production GameSim without WebGL.
- * Only Canvas2D texture painting is stubbed. This is a simulation regression, not a GPU benchmark.
+ * Canvas2D painting and image decoding are stubbed. This is a simulation regression, not a GPU benchmark.
  */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -22,9 +22,9 @@ const context = new Proxy({}, {
     return () => {};
   }, set() { return true; },
 });
-globalThis.document = { createElement: () => ({ getContext: () => context }) };
+globalThis.document = { createElement: () => ({ getContext: () => context }), createElementNS: () => ({ addEventListener() {}, removeEventListener() {} }) };
 globalThis.ProgressEvent = class { constructor(type, data) { this.type = type; Object.assign(this, data); } };
-await build({ input: 'src/world/players.ts', external: id => id === 'three' || id.startsWith('three/'), output: { file: 'work/ball-test-module.mjs', format: 'esm' } });
+await build({plugins:[{name:'test-base-url',transform:code=>code.replaceAll('import.meta.env.BASE_URL','"/"')}], input: 'src/world/players.ts', external: id => id === 'three' || id.startsWith('three/'), output: { file: 'work/ball-test-module.mjs', format: 'esm' } });
 const { GameSim } = await import('../work/ball-test-module.mjs');
 const bytes = fs.readFileSync('public/models/baller.glb');
 const gltf = await new GLTFLoader().parseAsync(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), '');
@@ -70,6 +70,7 @@ let frames = 0, maxStep = 0, maxSpeed = 0, minY = Infinity, catches = 0, scored 
 const phases = {}, actions = {}, modes = {}, transitions = {};
 let last = sim.qaSnapshot();
 function tick(dt = 1 / 60) {
+  const beforeUpdate = sim.qaSnapshot();
   sim.update(dt, frames * dt);
   const state = sim.qaSnapshot();
   const p = new THREE.Vector3(...state.position), step = p.distanceTo(previous);
@@ -82,7 +83,7 @@ function tick(dt = 1 / 60) {
   const mesh = sim.group.getObjectByName('basketball');
   const world = mesh.getWorldPosition(new THREE.Vector3());
   assert(world.distanceTo(new THREE.Vector3(...state.worldPosition)) < 1e-6, 'Rendered ball and authoritative world position differ');
-  if (last.flight?.purpose === 'pass' && state.mode === 'held') {
+  if (beforeUpdate.flight?.purpose === 'pass' && state.mode === 'held') {
     catches++;
     const grip = sim.holder.hand.getWorldPosition(new THREE.Vector3());
     assert(grip.distanceTo(world) < 1e-5, `Pass catch missed palm by ${grip.distanceTo(world)}ft`);
@@ -149,7 +150,7 @@ sim.setManualControl(false);
 for (const clip of expectedClips) assert(actions[clip], `Authored clip not exercised: ${clip}`);
 const baseline = JSON.parse(fs.readFileSync('tests/evidence/ball-before.json'));
 const report = {
-  kind: 'Real production GLB / GameSim deterministic regression; Canvas2D drawing stubbed; no GPU timings',
+  kind: 'Real production GLB / GameSim deterministic regression; Canvas2D drawing/image decoding stubbed; no GPU timings',
   before: { frames: baseline.frames, seconds: baseline.seconds, worstSingleFrameFeet: baseline.maxJump, jumpsOver2_5Feet: baseline.events.length },
   footPlant, assetSha256: createHash('sha256').update(bytes).digest('hex'), autoplay, autoplay30, total: { frames, maxStepFeet: maxStep, maxSpeedFeetPerSecond: maxSpeed, minimumHeightFeet: minY, catches, scores: scored },
   scenarios: ['dribble', 'moving receiver pass', 'forced score', 'forced miss', 'rim rebound', 'dunk', 'crossover', 'reset', 'transformed parent', 'manual move/pass/shot'],

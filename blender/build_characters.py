@@ -11,6 +11,7 @@ HERE=os.path.dirname(os.path.abspath(__file__))
 ARGS=sys.argv[sys.argv.index('--')+1:] if '--' in sys.argv else []
 OUT=os.path.abspath(ARGS[0]) if ARGS and not ARGS[0].startswith('--') else os.path.join(HERE,'../public/models')
 PREVIEW=ARGS[ARGS.index('--preview')+1] if '--preview' in ARGS else None
+FANS_ONLY='--fans-only' in ARGS
 FPS=24
 REGIONS=['Skin','Jersey','Trim','Shorts','Socks','Shoe','Sole','EyeWhite','Dark','Hair']
 SCALE=6.35/2.019
@@ -25,7 +26,32 @@ def material(name,col,rough=.78):
  p=m.node_tree.nodes.get('Principled BSDF');p.inputs['Base Color'].default_value=(*col,1);p.inputs['Roughness'].default_value=rough
  m.use_backface_culling=True
  return m
-MATS=[material(n,c) for n,c in zip(REGIONS,[(.26,.115,.06),(.6,.045,.03),(.88,.79,.51),(.045,.055,.075),(.9,.88,.81),(.65,.07,.025),(.83,.79,.7),(.91,.9,.83),(.016,.01,.008),(.026,.012,.008)])]
+MATS=[material(n,c,r) for n,c,r in zip(REGIONS,[(.26,.115,.06),(.31,.018,.015),(.84,.80,.68),(.035,.040,.045),(.72,.70,.65),(.055,.05,.045),(.65,.63,.58),(.62,.60,.54),(.016,.01,.008),(.026,.012,.008)],[.55,.91,.91,.92,.95,.67,.9,.3,.4,.95])]
+# Keep the editable Blender authoring view consistent with the runtime's mapped
+# surfaces. The GLB palette shader loads these shared maps once for the cast.
+TEXTURES=os.path.join(HERE,'../public/textures/athlete')
+def surface_maps(index,color=None,normal=None,rough=None,strength=.45):
+ m=MATS[index];nodes=m.node_tree.nodes;links=m.node_tree.links;p=nodes.get('Principled BSDF')
+ def tex(name,data=False):
+  path=os.path.join(TEXTURES,name+'.png')
+  if not os.path.exists(path):return None
+  n=nodes.new('ShaderNodeTexImage');n.image=bpy.data.images.load(path,check_existing=True)
+  if data:n.image.colorspace_settings.name='Non-Color'
+  return n
+ if color:
+  n=tex(color)
+  if n:links.new(n.outputs['Color'],p.inputs['Base Color'])
+ if normal:
+  n=tex(normal,True)
+  if n:
+   bump=nodes.new('ShaderNodeNormalMap');bump.inputs['Strength'].default_value=strength;links.new(n.outputs['Color'],bump.inputs['Color']);links.new(bump.outputs['Normal'],p.inputs['Normal'])
+ if rough:
+  n=tex(rough,True)
+  if n:links.new(n.outputs['Color'],p.inputs['Roughness'])
+surface_maps(0,'skin-color','skin-normal',strength=.45)
+surface_maps(1,normal='jersey-normal',rough='jersey-roughness',strength=.32)
+surface_maps(5,'shoe-color','shoe-normal',strength=.55)
+surface_maps(6,'shoe-color','shoe-normal',strength=.55)
 def active(o):
  bpy.ops.object.select_all(action='DESELECT');o.select_set(True);bpy.context.view_layer.objects.active=o
 
@@ -60,16 +86,17 @@ for repeat in range(7):
   if len(neighbors)==2:changes[v]=v.co.lerp((neighbors[0].co+neighbors[1].co)*.5,.57)
  for v,co in changes.items():v.co=co
 bm.normal_update();deform=bm.verts.layers.deform.active
+for v in bverts:
+ if v.co.z<1.21:v.co.z=1.135
 outer={};inner={}
 for v in bverts:
  normal=v.normal.normalized();inside=sum((f.calc_center_median()-v.co for f in v.link_faces),Vector()).normalized()
- outer[v]=bm.verts.new(v.co+normal*.0012);inner[v]=bm.verts.new(v.co+inside*.005+normal*.0014)
+ outer[v]=bm.verts.new(v.co+normal*.0012);inner[v]=bm.verts.new(v.co+inside*.007+normal*.0014)
  if deform:
   for dst in [outer[v],inner[v]]:
    for idx,w in v[deform].items():dst[deform][idx]=w
 for e in bound:
  a,b=e.verts
- if (a.co.z+b.co.z)*.5<1.2:continue
  try:f=bm.faces.new((outer[a],outer[b],inner[b],inner[a]));f.material_index=2
  except ValueError:pass
 bm.to_mesh(jersey.data);bm.free()
@@ -79,27 +106,56 @@ for v in shorts.data.vertices:
  v.co.x*=1.045;v.co.y*=1.075
 for p in shorts.data.polygons:
  c=p.center
- if c.z<.695:p.material_index=3
+ if c.z<.705:p.material_index=2
+# The source garment is open along the hem. Flatten the two leg openings and
+# give both garment edges a sewn thickness, retaining the authored crotch folds.
+for o in [jersey,shorts]:
+ bm=bmesh.new();bm.from_mesh(o.data)
+ if o==shorts:
+  for v in bm.verts:
+   if v.co.z<.73 and any(e.is_boundary for e in v.link_edges):v.co.z=.695
+ bm.to_mesh(o.data);bm.free()
+ active(o);solid=o.modifiers.new('Sewn cloth thickness','SOLIDIFY');solid.thickness=.0018;solid.offset=-.5
+ bpy.ops.object.modifier_apply(modifier=solid.name)
+# A hem follows the waistband as a continuous sewn ring. Source clothing weights
+# varied across adjacent cut vertices and made an otherwise level edge scallop.
+for v in jersey.data.vertices:
+ if v.co.z<1.145:
+  v.co.z=1.135
+  for g in list(v.groups):jersey.vertex_groups[g.group].remove([v.index])
+  group=jersey.vertex_groups.get('pelvis') or jersey.vertex_groups.new(name='pelvis')
+  group.add([v.index],1,'REPLACE')
 # Crew socks are an offset of the actual weighted calf surface, avoiding the
 # radius/weight mismatch produced by compressing a long source sock vertically.
 socks=body.copy();socks.data=body.data.copy();socks.name='FittedCrewSocks';scene.collection.objects.link(socks)
 bpy.data.objects.remove(bpy.data.objects['Socks'],do_unlink=True)
-cut(socks,lambda p:not(.22<p.z<.41 and abs(p.x)<.36))
+cut(socks,lambda p:not(.15<p.z<.43 and abs(p.x)<.36))
 bm=bmesh.new();bm.from_mesh(socks.data);bm.normal_update()
 for v in bm.verts:
  v.co+=Vector((v.normal.x,v.normal.y,0))*.004
- if any(e.is_boundary for e in v.link_edges):v.co.z=.22 if v.co.z<.30 else .41
+ if any(e.is_boundary for e in v.link_edges):v.co.z=.15 if v.co.z<.30 else .43
 bm.to_mesh(socks.data);bm.free();assign(socks,4)
 shoes=bpy.data.objects['Shoes'];assign(shoes,5)
 for p in shoes.data.polygons:
- if p.center.z<.047:p.material_index=6
+ if p.center.z<.022:p.material_index=8
+ elif p.center.z<.047:p.material_index=6
  # Mesh-authored laces/upper panel accent, not painted blocks.
- elif p.center.y<-.065 and p.center.z>.105:p.material_index=2
+ elif p.center.y<-.065 and .105<p.center.z<.19:p.material_index=2
 # Delete fully covered geometry. Keep shoulder/deltoid, elbows, knees and calf topology intact.
 assign(body,0)
-cut(body,lambda p: (p.z<.115) or (.225<p.z<.405 and abs(p.x)<.36) or (.70<p.z<1.14 and abs(p.x)<.30) or (1.14<p.z<1.49 and abs(p.x)<.175) or (1.49<p.z<1.59 and abs(p.x)<.14 and p.y>.035))
+cut(body,lambda p: (p.z<.105) or (.78<p.z<1.10 and abs(p.x)<.27) or (1.20<p.z<1.46 and abs(p.x)<.165) or (1.50<p.z<1.57 and abs(p.x)<.13 and p.y>.04))
 # Fine facial color values are encoded separately from selectable skin tone.
 eyes=bpy.data.objects['Eyes'];assign(eyes,7)
+# Reduce the source's very open neutral eyelids without moving eye centers.
+# Both continuous lids and eyeballs receive the same local deformation.
+for o in [body,eyes]:
+ for v in o.data.vertices:
+  p=v.co
+  if o==eyes:
+   p.z=1.889+(p.z-1.889)*.84
+  elif p.y<-.065 and .014<abs(p.x)<.075 and 1.873<p.z<1.910:
+   weight=math.exp(-((abs(p.x)-.04)/.024)**4)*math.exp(-((p.z-1.890)/.021)**4)
+   p.z=1.889+(p.z-1.889)*(1-.16*weight)
 # Actual iris geometry: eye UV material retained in source, sampled for region mask.
 for p in eyes.data.polygons:
  c=p.center
@@ -148,7 +204,7 @@ def scalp(name,style):
  bm.to_mesh(o.data);bm.free()
  for v in o.data.vertices:
   p=v.co;d=p-Vector((0,-.015,1.93))
-  thick=.007
+  thick=-.004+.0009*math.sin(p.x*660)*math.cos(p.y*530)
   if style=='afro':thick=.031+.005*math.sin(p.x*340)*math.cos(p.y*280)*math.sin(p.z*250)
   if style=='twists':thick=.018+.010*(.5+.5*math.sin(p.x*200+math.cos(p.y*110)))
   p+=d.normalized()*(thick+.006)
@@ -273,15 +329,15 @@ def pose(kind,t):
  hip=-.07;hop=0;lean=.035;spread=.225;lefty=.015;righty=.015;leftz=.088;rightz=.088
  ball=Vector((-.37,-.36,1.17));other=Vector((.37,-.22,1.13));fd=(0,-1,0);pn=(0,0,-1)
  if kind in ['Run','RunDribble']:
-  hip=-.225+.025*math.cos(t*math.tau*2);lean=.12
+  hip=-.13+.018*math.cos(t*math.tau*2);lean=.085
   # Linear backward ground travel is the stance. The return lifts clear of the court.
   for side,phase in [('l',t),('r',(t+.5)%1)]:
    u=phase%1
-   if u<.5:y=-.62+2.48*u;z=.088
-   else:v=(u-.5)*2;y=.62-1.24*(v*v*(3-2*v));z=.088+.23*math.sin(v*math.pi)
+   if u<.5:y=-.42+1.68*u;z=.088
+   else:v=(u-.5)*2;y=.42-.84*(v*v*(3-2*v));z=.088+.16*math.sin(v*math.pi)
    if side=='l':lefty,leftz=y,z
    else:righty,rightz=y,z
-  ball=Vector((-.30,-.29+.10*s,1.21));other=Vector((.29,-.27-.10*s,1.21))
+  ball=Vector((-.30,-.29+.10*s,1.21));other=Vector((.29,-.27-.20*s,1.21))
  if kind in ['IdleDribble','RunDribble','Crossover']:
   ball=Vector((-.38,-.36,1.08+.16*(.5-.5*math.cos(t*math.tau))))
   other=Vector((.28,-.21,1.18));hip-=.03
@@ -319,7 +375,7 @@ def pose(kind,t):
   if kind=='Card':ball=Vector((-.28,-.45,1.56));other=Vector((.28,-.45,1.56));pn=(1,0,0)
  # Pelvis local matrix translation is a world vector, not its tilted local axis.
  p['pelvis'].matrix=Matrix.Translation((.014*s if kind in ['Idle','IdleDribble'] else 0,0,hip))@REST['pelvis']
- p['spine_01'].rotation_quaternion=Euler((lean,0,.018*s if kind=='Idle' else 0),'XYZ').to_quaternion()
+ p['spine_01'].rotation_quaternion=Euler((lean,.025*s if kind in ['Run','RunDribble'] else 0,.065*s if kind in ['Run','RunDribble'] else .018*s if kind=='Idle' else 0),'XYZ').to_quaternion()
  bpy.context.view_layer.update()
  leftx,rightx=spread,-spread
  if kind=='Shuffle':
@@ -346,14 +402,14 @@ def pose(kind,t):
  bpy.context.view_layer.update()
 
 DURATIONS={'Idle':48,'Run':20,'RunDribble':20,'IdleDribble':24,'Defend':32,'Shuffle':24,'Crossover':24,'Pass':24,'Catch':20,'Shoot':24,'Jump':24,'Dunk':24,'Land':18,'Rebound':26,'Celebrate':32}
-for name,frames in DURATIONS.items():
+for name,frames in ([] if FANS_ONLY else DURATIONS.items()):
  rig.animation_data_create();act=bpy.data.actions.new(name);rig.animation_data.action=act;act.use_fake_user=True
  for f in range(frames+1):
   scene.frame_set(f);pose(name,f/frames)
   for pb in rig.pose.bones:
    pb.keyframe_insert('rotation_quaternion',frame=f,group=pb.name);pb.keyframe_insert('location',frame=f,group=pb.name)
  print('ANIMATION',name,frames,flush=True)
-rig.animation_data.action=None;reset_pose()
+rig.animation_data_create();rig.animation_data.action=None;reset_pose()
 # All pieces except optional hair are one draw call. Preserve face morphs on the main body.
 active(body)
 for o in [jersey,shorts,socks,shoes,eyes,brows]:o.select_set(True)
@@ -372,17 +428,18 @@ def number(name,back):
 numbers=[number('NumberFront',False),number('NumberBack',True)]
 # Save editable authored asset before region conversion for QA and future art work.
 os.makedirs(OUT,exist_ok=True);os.makedirs(os.path.join(HERE,'../work/athlete'),exist_ok=True)
-bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE,'../work/athlete/adult-athlete-authored.blend'))
+if not FANS_ONLY:bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE,'../work/athlete/adult-athlete-authored.blend'))
 player_meshes=[body]+hair+numbers
 for o in [body]+hair:regionize(o)
 active(rig)
 for o in player_meshes:o.select_set(True)
 scene.frame_start=0;scene.frame_end=48
-bpy.ops.export_scene.gltf(filepath=os.path.join(OUT,'baller.glb'),export_format='GLB',use_selection=True,export_yup=True,export_apply=False,export_animations=True,export_animation_mode='ACTIONS',export_skins=True,export_vertex_color='ACTIVE',export_force_sampling=True,export_optimize_animation_size=True,export_morph=True)
+if not FANS_ONLY:bpy.ops.export_scene.gltf(filepath=os.path.join(OUT,'baller.glb'),export_format='GLB',use_selection=True,export_yup=True,export_apply=False,export_animations=True,export_animation_mode='ACTIONS',export_skins=True,export_vertex_color='ACTIVE',export_force_sampling=True,export_optimize_animation_size=True,export_morph=True)
 # Static crowd LOD from the same continuous anatomy, baked in five natural body poses.
-# 15 instanced batches; ~1,000 triangles per fan, no runtime skeleton on crowd.
+# Two compatible tiers in 15 pose/style batches each, no runtime skeleton.
 for o in numbers:o.hide_render=True
 fanobjs=[]
+fan_palette=material('CrowdRegions',(1,1,1),.9)
 for pn in ['Sit','Clap','Card','Cheer','Stand']:
  pose({'Cheer':'Celebrate','Stand':'Idle'}.get(pn,pn),.33)
  for style,ho in [('Short',hair[0]),('Afro',hair[1]),('Cap',headband)]:
@@ -395,14 +452,32 @@ for pn in ['Sit','Clap','Card','Cheer','Stand']:
   if a:
    for c in a.data:
     r=int(c.color[0]*16);fr={0:0,1:1,2:1,3:2,4:2,5:4,6:7,7:5,8:6,9:3}.get(r,0);c.color=((fr+.5)/8,c.color[1],0,1)
-  o.data.materials.clear();o.data.materials.append(MATS[0])
+  o.data.materials.clear();o.data.materials.append(fan_palette)
   for poly in o.data.polygons:poly.material_index=0
-  dec=o.modifiers.new('Crowd LOD','DECIMATE');dec.ratio=.04;dec.use_collapse_triangulate=True;bpy.ops.object.modifier_apply(modifier=dec.name)
-  # Ground standing soles; seated origin is the seat-contact point at pelvis.
+  # Preserve the old distant geometry before applying a separate near tier.
+  far=o.copy();far.data=o.data.copy();far.name='FanFar_'+pn+'_'+style;scene.collection.objects.link(far)
+  # One common grounding value prevents a pop when switching between LODs.
   offset=3.12 if pn in ['Sit','Clap','Card'] else min((o.matrix_world@v.co).z for v in o.data.vertices)
-  bpy.ops.object.transform_apply(location=False,rotation=False,scale=True)
-  for v in o.data.vertices:v.co.z-=offset
-  fanobjs.append(o)
+  for tier,ratio in [(o,.11),(far,.04)]:
+   active(tier)
+   dec=tier.modifiers.new('Near crowd LOD' if tier==o else 'Far crowd LOD','DECIMATE');dec.ratio=ratio;dec.use_collapse_triangulate=True
+   if tier==o:
+    # Prefer collapsing clothing/torso surfaces, keeping more of the actual
+    # eyelid, jaw, thumb and finger topology where the close crowd is readable.
+    protect=[]
+    for bn,radius in [('head',.62),('hand.L',.51),('hand.R',.51)]:
+     pb=rig.pose.bones[bn];protect.append((rig.matrix_world@((pb.head+pb.tail)*.5),radius))
+    vg=tier.vertex_groups.new(name='SimplificationPriority')
+    for v in tier.data.vertices:
+     p=tier.matrix_world@v.co
+     keep=max(math.exp(-((p-center).length/radius)**4) for center,radius in protect)
+     vg.add([v.index],1-.86*keep,'REPLACE')
+    dec.vertex_group=vg.name;dec.vertex_group_factor=4
+   bpy.ops.object.modifier_apply(modifier=dec.name)
+   bpy.ops.object.transform_apply(location=False,rotation=False,scale=True)
+   for v in tier.data.vertices:v.co.z-=offset
+   tier.data.validate(verbose=False,clean_customdata=False)
+   fanobjs.append(tier)
 active(fanobjs[0])
 for o in fanobjs:o.select_set(True)
 bpy.ops.export_scene.gltf(filepath=os.path.join(OUT,'fans.glb'),export_format='GLB',use_selection=True,export_yup=True,export_apply=True,export_animations=False,export_skins=False,export_vertex_color='ACTIVE')
@@ -424,7 +499,7 @@ if PREVIEW:
   attr=o.data.color_attributes['Region'];o.data.materials.clear()
   for m in MATS:o.data.materials.append(m)
   for p in o.data.polygons:p.material_index=min(9,int(attr.data[p.loop_start].color[0]*16))
- scene.render.engine='BLENDER_WORKBENCH';scene.display.shading.light='STUDIO';scene.display.shading.color_type='MATERIAL';scene.display.shading.show_shadows=True;scene.display.shading.show_cavity=True;scene.render.resolution_x=1000;scene.render.resolution_y=1200;scene.render.resolution_percentage=100
+ scene.render.engine='CYCLES';scene.cycles.samples=24;scene.cycles.use_denoising=True;scene.render.resolution_x=1000;scene.render.resolution_y=1200;scene.render.resolution_percentage=100
  scene.world=bpy.data.worlds.new('Athlete QA world');scene.world.color=(.16,.16,.16);scene.view_settings.view_transform='AgX'
  bpy.ops.mesh.primitive_plane_add(size=200);floor=bpy.context.object;floor.data.materials.append(material('Floor',(.08,.105,.1)))
  def point(o,p):o.rotation_euler=(Vector(p)-o.location).to_track_quat('-Z','Y').to_euler()
